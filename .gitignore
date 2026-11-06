@@ -1,0 +1,32 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Java / Gradle
+.gradle/
+build/
+out/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node.js
+node_modules/
+.next/
+coverage/
+
+# Python and TypeScript generated files
+.ruff_cache/
+*.egg-info/
+*.tsbuildinfo

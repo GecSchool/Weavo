@@ -1,2 +1,5 @@
 # Weavo
-AI-powered platform that collects and integrates web data from multiple sources and automatically generates APIs.
+
+Weavo는 여러 웹사이트의 데이터를 사용자가 정한 스키마로 수집·통합하고 API로 제공하는 AI 기반 웹 데이터 플랫폼입니다.
+
+사용자가 출처와 원하는 데이터를 설정하면 분석 서비스가 수집 규칙과 스키마 후보를 만들고, 크롤러가 수집한 결과를 인제스천 서비스가 적재합니다. 사용자는 통합된 데이터를 조회하거나 API로 활용할 수 있습니다.

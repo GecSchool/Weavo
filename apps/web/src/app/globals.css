@@ -1,0 +1,14 @@
+:root {
+  --color-text: #182132;
+  --color-muted: #5d6676;
+  --color-border: #d5d9e0;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1.5rem;
+  --space-xl: 4rem;
+  --radius: 0.5rem;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--color-text); font-family: Arial, sans-serif; }
+a { color: #2459a6; }

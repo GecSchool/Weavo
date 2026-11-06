@@ -1,0 +1,42 @@
+name: weavo
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-weavo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in infra/local/.env}
+      POSTGRES_DB: weavo
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - weavo_postgres:/var/lib/postgresql/data
+      - ./postgres/01-databases.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  localstack:
+    image: localstack/localstack:2026.4
+    environment:
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN in infra/local/.env}
+      AWS_DEFAULT_REGION: ap-northeast-2
+    ports:
+      - "127.0.0.1:4566:4566"
+    volumes:
+      - ./localstack/init-resources.sh:/etc/localstack/init/ready.d/init-resources.sh:ro
+
+volumes:
+  weavo_postgres:
