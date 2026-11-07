@@ -4,7 +4,7 @@
 - 최근 수정일: 2026-11-07
 - 상태: 구현 계약 초안. 기존 합의와 이번 검토의 보완 제안을 구분한다.
 - 목적: 기능·예외별 모든 전송 상황을 15절에서 확인하고, 각 단계의 공통 메시지 형식·payload를 1~10절과 16절에서 찾아 구현할 수 있도록 한다.
-- 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서.docx. 아래에서 “설명서 N절·그림 N”은 이 문서의 번호다.
+- 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서_ERD_수정본.docx. 아래에서 “설명서 N절·그림 N”은 이 문서의 번호다.
 - 전달 순서 기준: service-message-flows.md 3.1~3.20. 이 파일의 15.1~15.20과 설명서의 1~20절이 같은 흐름에 대응한다.
 - 제품 정책 기준: spec-decision-log.md. 설계 제안서는 제품·구성의 보조 자료로 참고한다.
 - 기존 합의: Control 중심 조정, SQS 표준 큐, Outbox·수신 멱등 처리, 드문 중복 실행의 비용 허용과 결과의 중복 반영 방지.
@@ -26,7 +26,6 @@
 | analysis_id | UUIDv4 문자열 | Control이 분석 과정별로 생성한다. 후보 수정과 그에 대한 재검증 작업은 같은 분석 안에 속할 수 있다. |
 | event_id | UUIDv4 문자열 | 결과를 만든 서비스가 생성하고 확정 결과에 보관한다. 같은 결과 재발행 시 유지한다. |
 | prepared_job_id | UUIDv4 문자열 | Control이 발급한 PREPARE 작업의 job_id를 참조하는 이름이다. 별도의 준비 결과 ID는 생성하지 않는다. |
-| rule_id | 설정 내부 문자열 | detail_rules 안에서만 유일한 이름. 전역 UUID가 아니며 field connector가 이를 참조한다. |
 | revision, connector_revision, navigation_revision | 양의 JSON 정수 | 각 설정 내에서 1부터 증가. 후보 revision, 커넥터 묶음 revision, 공유 이동 revision을 서로 혼용하지 않는다. |
 | schema_version | 양의 JSON 정수 | 프로젝트의 승인 스키마·Data API 버전. 후보 revision과 다르다. |
 | dataset_revision | 0 이상의 JSON 정수 | Ingestion이 데이터의 공개 상태를 갱신할 때 증가. 스키마 구조가 같아도 바뀔 수 있다. |
@@ -88,9 +87,9 @@ error.code는 정형 코드, message는 사람에게 표시할 요약, details�
 | 대조 지점 | 앞선 예시의 부족한 점 | 이 문서의 처리 |
 |---|---|---|
 | 설명서 1·2절 및 그림 1·2 | 공동 추천을 별도 Control 요청으로 쪼갤 수 있었음 | Analysis가 출처 분석·S3 중간 결과 조회·공동 추천을 이어서 수행한다. |
-| 접근 방식 | collection_method 하나로 목록·상세를 모두 표현 | list_access와 detail_rules[].access를 구분한다. |
+| 접근 방식 | collection_method 하나로 목록·상세를 모두 표현 | 목록 list_access와 각 field_connector.detail_navigation.access를 구분한다. |
 | 탐색 종류 | NEXT_LINK 예시만 존재 | NEXT_LINK, URL_TEMPLATE, CLICK_NEXT, LOAD_MORE, SCROLL과 상세 LINK·CLICK·목록 복귀를 표현한다. |
-| 상세 파싱 | 상세 URL만으로 목록과 상세 연결이 불명확 | manifest의 record_key·item_index·detail_rule_id로 수집 항목과 상세 객체를 연결한다. |
+| 상세 파싱 | 상세 URL만으로 목록과 상세 연결이 불명확 | manifest의 record_key·item_index·consumers로 수집 항목과 상세 객체를 연결한다. |
 | 분석 입력 | 사용자 선택 그룹·제외 출처·부분 성공 출처 보존이 부족 | current_candidate의 fields 및 excluded_project_source_ids, 출처별 결과와 변경 대상 목록을 전달한다. |
 | 복구 기준 | 최신 3건 또는 승인 샘플을 누가 전달할지 불명확 | 보완 제안으로 Control이 Ingestion에서 조회해 recovery_baselines에 넣는다. DB 0건일 때 승인 샘플 참조를 넣는다. |
 | 정상 0건 | 새 데이터 0건과 정상 추출 0건 혼동 가능 | normal_extracted_record_count와 inserted_record_count를 분리하고 issue 코드를 구분한다. |
@@ -220,7 +219,6 @@ Analysis·Crawler·Ingestion은 같은 함수 틀, Java 실행 환경, 타입 �
     {
       "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
       "location": "LIST",
-      "detail_rule_id": null,
       "selector": ".notice-title",
       "extract": {
         "type": "TEXT",
@@ -228,13 +226,31 @@ Analysis·Crawler·Ingestion은 같은 함수 틀, Java 실행 환경, 타입 �
       },
       "parser": {
         "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
-      }
+      },
+      "detail_navigation": null
     }
   ]
 }
 ```
 
-field connector는 해당 project_source_id와 field_id 조합에 속한다. connector_revision은 이번 프로젝트·출처의 필드 커넥터 묶음 버전이다. 내부에서 필드별 이력도 별도로 둘 수 있지만 이 계약에서는 실행할 묶음을 하나의 revision으로 고정한다. location은 LIST, DETAIL, ABSENT다. ABSENT인 필드는 selector·detail_rule_id·parser를 null로 두고 정상 null을 생성한다. DETAIL은 유효한 detail_rule_id를 요구한다. selector는 LIST이면 item_selector로 찾은 항목 기준, DETAIL이면 연결된 상세 DOM 기준이다.
+field connector는 해당 project_source_id와 field_id 조합에 속한다. connector_revision은 이번 프로젝트·출처의 필드 커넥터 묶음 버전이다. 내부에서 필드별 이력도 별도로 둘 수 있지만 이 계약에서는 실행할 묶음을 하나의 revision으로 고정한다. location은 LIST, DETAIL, ABSENT다. ABSENT인 필드는 selector·detail_navigation·parser를 null로 두고 정상 null을 생성한다. DETAIL은 필드별 detail_navigation(접근·이동·복귀)을 요구한다. selector는 LIST이면 item_selector로 찾은 항목 기준, DETAIL이면 연결된 상세 DOM 기준이다.
+
+**DETAIL 필드 예시:** 아래의 `detail_navigation`은 해당 필드 커넥터 내부에 포함한다. `open.selector`는 목록 항목 기준이며 `selector`는 상세 DOM에서 값을 추출한다.
+
+```json
+{
+  "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+  "location": "DETAIL",
+  "detail_navigation": {
+    "access": {"method": "BROWSER", "wait_selector": ".article-body"},
+    "open": {"type": "CLICK", "selector": ".notice-title button"},
+    "return": {"type": "HISTORY_BACK", "wait_selector": ".notice-list"}
+  },
+  "selector": ".article-body",
+  "extract": {"type": "TEXT", "attribute": null},
+  "parser": null
+}
+```
 
 ### 5.2 목록과 상세 이동
 
@@ -252,24 +268,7 @@ field connector는 해당 project_source_id와 field_id 조합에 속한다. con
     "selector": ".pagination .next",
     "url_attribute": "href",
     "wait_selector": null
-  },
-  "detail_rules": [
-    {
-      "rule_id": "notice_detail",
-      "access": {
-        "method": "BROWSER",
-        "wait_selector": ".article-body"
-      },
-      "open": {
-        "type": "CLICK",
-        "selector": ".notice-title button"
-      },
-      "return": {
-        "type": "HISTORY_BACK",
-        "wait_selector": ".notice-list"
-      }
-    }
-  ]
+  }
 }
 ```
 
@@ -312,12 +311,19 @@ LINK 상세는 selector·url_attribute, CLICK 상세는 selector·wait 조건과
           "sequence_index": 0,
           "details": [
             {
-              "detail_rule_id": "notice_detail",
               "url": "https://school.example/notices",
               "object_ref": {
                 "bucket": "capstone-artifacts",
                 "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempt-1/detail-0001.html"
-              }
+              },
+              "consumers": [
+                {
+                  "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+                  "field_ids": [
+                    "ba4f9e1e-ae8e-4a3c-9261-dca457848148"
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -327,7 +333,7 @@ LINK 상세는 selector·url_attribute, CLICK 상세는 selector·wait 조건과
 }
 ```
 
-record_key는 이번 스냅샷 안의 목록–상세 연결용 식별자다. 외부 게시물 ID나 기존 데이터 매칭 키로 사용하지 않는다. 클릭형 상세는 URL이 목록과 같아도 object_ref와 연결 관계로 구분한다. sequence_index는 이번 수집의 전체 추출 순서를 나타내며 Ingestion 역순 저장에 사용한다. 무한 스크롤 누적 DOM에서는 같은 항목을 중복 열거하지 않도록 각 구간에서 새로 확보한 항목의 범위를 기록한다. 동일 항목을 판별하는 브라우저 구현은 별도 확인 필요다.
+상세 객체의 consumers는 해당 상세를 사용하는 project_source_id와 field_ids를 명시한다. Crawler는 필드별 동일한 상세 접근·이동·복귀 규칙을 작업 중 묶어 방문하고, 같은 객체를 여러 consumer에 연결한다. LINK는 정규화한 대상과 이동 조건, CLICK은 선택자·대기·복귀 조건 등 동작 전체가 같아야 묶는다. 목록 항목별로 구분하며 URL만 같은 클릭은 합치지 않는다. 영구 상세 규칙 ID는 없다. record_key는 이번 스냅샷 안의 목록–상세 연결용 식별자다. 외부 게시물 ID나 기존 데이터 매칭 키로 사용하지 않는다. 클릭형 상세는 URL이 목록과 같아도 object_ref와 연결 관계로 구분한다. sequence_index는 이번 수집의 전체 추출 순서를 나타내며 Ingestion 역순 저장에 사용한다. 무한 스크롤 누적 DOM에서는 같은 항목을 중복 열거하지 않도록 각 구간에서 새로 확보한 항목의 범위를 기록한다. 동일 항목을 판별하는 브라우저 구현은 별도 확인 필요다.
 
 ## 6 분석 요청과 결과
 
@@ -397,31 +403,13 @@ Control → Analysis. 초기 분석부터 공동 추천까지 한 작업으로 �
           "selector": ".pagination .next",
           "url_attribute": "href",
           "wait_selector": null
-        },
-        "detail_rules": [
-          {
-            "rule_id": "notice_detail",
-            "access": {
-              "method": "BROWSER",
-              "wait_selector": ".article-body"
-            },
-            "open": {
-              "type": "CLICK",
-              "selector": ".notice-title button"
-            },
-            "return": {
-              "type": "HISTORY_BACK",
-              "wait_selector": ".notice-list"
-            }
-          }
-        ]
+        }
       },
       "connector_revision": 2,
       "field_connectors": [
         {
           "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
           "location": "LIST",
-          "detail_rule_id": null,
           "selector": ".notice-title",
           "extract": {
             "type": "TEXT",
@@ -429,7 +417,8 @@ Control → Analysis. 초기 분석부터 공동 추천까지 한 작업으로 �
           },
           "parser": {
             "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
-          }
+          },
+          "detail_navigation": null
         }
       ]
     }
@@ -509,31 +498,13 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
             "selector": ".pagination .next",
             "url_attribute": "href",
             "wait_selector": null
-          },
-          "detail_rules": [
-            {
-              "rule_id": "notice_detail",
-              "access": {
-                "method": "BROWSER",
-                "wait_selector": ".article-body"
-              },
-              "open": {
-                "type": "CLICK",
-                "selector": ".notice-title button"
-              },
-              "return": {
-                "type": "HISTORY_BACK",
-                "wait_selector": ".notice-list"
-              }
-            }
-          ]
+          }
         },
         "connector_revision": 2,
         "field_connectors": [
           {
             "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
             "location": "LIST",
-            "detail_rule_id": null,
             "selector": ".notice-title",
             "extract": {
               "type": "TEXT",
@@ -541,7 +512,8 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
             },
             "parser": {
               "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
-            }
+            },
+            "detail_navigation": null
           }
         ]
       }
@@ -678,24 +650,7 @@ Control은 일정 이름·원하는 실행 슬롯·등록 상태·최근 오류�
       "selector": ".pagination .next",
       "url_attribute": "href",
       "wait_selector": null
-    },
-    "detail_rules": [
-      {
-        "rule_id": "notice_detail",
-        "access": {
-          "method": "BROWSER",
-          "wait_selector": ".article-body"
-        },
-        "open": {
-          "type": "CLICK",
-          "selector": ".notice-title button"
-        },
-        "return": {
-          "type": "HISTORY_BACK",
-          "wait_selector": ".notice-list"
-        }
-      }
-    ]
+    }
   },
   "projects": [
     {
@@ -719,7 +674,6 @@ Control은 일정 이름·원하는 실행 슬롯·등록 상태·최근 오류�
         {
           "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
           "location": "LIST",
-          "detail_rule_id": null,
           "selector": ".notice-title",
           "extract": {
             "type": "TEXT",
@@ -727,7 +681,8 @@ Control은 일정 이름·원하는 실행 슬롯·등록 상태·최근 오류�
           },
           "parser": {
             "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
-          }
+          },
+          "detail_navigation": null
         }
       ],
       "latest_records": [
@@ -821,7 +776,6 @@ stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLO
     {
       "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
       "location": "LIST",
-      "detail_rule_id": null,
       "selector": ".notice-title",
       "extract": {
         "type": "TEXT",
@@ -829,13 +783,31 @@ stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLO
       },
       "parser": {
         "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
-      }
+      },
+      "detail_navigation": null
     }
   ]
 }
 ```
 
-APPEND는 기존 사용자 필드값과 비교해 신규만 역순 저장한다. PREPARE는 추가·교체용 데이터를 비활성 상태로 준비하며 change_job_id가 필수다. 같은 추출·검증 코드를 공유하되 저장·적용 단계만 구분한다. 구조 변경의 PREPARE는 기존 레코드와 매칭하거나 기존 record_id를 유지하지 않는다. APPEND도 해당 프로젝트 출처가 삭제되었거나 대상 schema_version이 종료되었으면 쓰지 않는다.
+APPEND는 기존 사용자 필드값과 비교해 신규만 역순 저장한다. PREPARE는 스키마 구조 변경의 새 버전 데이터를 비활성 상태로 준비하며 change_job_id가 필수다. 구조 유지 출처 추가는 APPROVED_SOURCE_APPEND를 사용한다. 승인된 변경의 change_job_id와 현재 버전을 검증하고 최초 수집 결과를 기존 필드값과 비교하여 정상 적재한 뒤 공개한다. 정상 추출 0건·실패는 부분 쓰기를 롤백하고 공개하지 않는다. 같은 job_id 재전달은 완료 기록을 재사용한다. 같은 추출·검증 코드를 공유하되 저장·적용 단계만 구분한다. 구조 변경의 PREPARE는 기존 레코드와 매칭하거나 기존 record_id를 유지하지 않는다. APPEND도 해당 프로젝트 출처가 삭제되었거나 대상 schema_version이 종료되었으면 쓰지 않는다. APPROVED_SOURCE_APPEND는 미활성 신규 연결이지만 승인된 change_job_id·project_source_id 및 현재 schema_version이 일치할 때만 허용한다. 실패·취소·삭제 후 지연 작업은 거부한다. 적재 결과는 DB 트랜잭션으로 확정하고 Control의 활성화 갱신 실패는 같은 완료 이벤트를 재처리해 수렴시킨다.
+
+**승인된 출처 추가 요청 예시:** 8.1의 일반 payload와 동일한 필드를 사용하고 다음 값만 바꾼다. `schema`, `field_connectors`, `snapshot_ref`는 8.1과 동일한 형식으로 필수 전달한다.
+
+```json
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+  "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+  "mode": "APPROVED_SOURCE_APPEND",
+  "schema_version": 1,
+  "connector_revision": 2,
+  "change_job_id": "20549fac-0901-42bd-be1d-4acad93965bc",
+  "snapshot_ref": {"bucket": "capstone-artifacts", "key": "collections/example/final/manifest.json"},
+  "schema": {"fields": [{"field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148", "api_name": "title", "display_name": "제목", "type": "string", "nullable": true}]},
+  "field_connectors": [{"field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148", "location": "LIST", "detail_navigation": null, "selector": ".notice-title", "extract": {"type": "TEXT", "attribute": null}, "parser": null}]
+}
+```
 
 ### 8.2 ingestion.completed payload
 
@@ -873,7 +845,7 @@ PREPARE 성공 예시:
 }
 ```
 
-normal_extracted_record_count=0이면 기존의 사용자 확인 흐름 대상이다. 정상 추출 건수와 status·error는 결과 판단에 필요한 필수 항목이다. APPEND 성공 시 공개 데이터 상태를 나타내는 dataset_revision은 필수이며, PREPARE 결과에서는 아직 공개되지 않았으므로 null이다.
+normal_extracted_record_count=0이면 기존의 사용자 확인 흐름 대상이다. 정상 추출 건수와 status·error는 결과 판단에 필요한 필수 항목이다. APPEND 및 APPROVED_SOURCE_APPEND 성공 시 공개 데이터 상태를 나타내는 dataset_revision은 필수이며, PREPARE 결과에서는 아직 공개되지 않았으므로 null이다.
 
 준비 결과는 PREPARE 작업의 envelope.job_id로 식별한다. 위 PREPARE 예시의 공통 envelope.job_id가 `bf521885-5d26-4c2c-9586-bf57b7d3d46f`라면 dataset.apply의 prepared_job_id에도 같은 값을 넣는다. 결과 payload에는 그 job_id를 다시 복사하거나 별도 준비 결과 ID를 넣지 않는다. Ingestion은 해당 job_id와 준비 데이터를 같은 트랜잭션으로 보관하고, 재전달에는 같은 준비 결과를 사용한다.
 
@@ -948,11 +920,11 @@ scope는 SOURCE 또는 PROJECT_SOURCE다. SOURCE면 project_id·project_source_i
 }
 ```
 
-operation은 REPLACE 또는 UPDATE_SOURCES다. REPLACE는 새 스키마 구조에 따라 최종 출처 전부의 준비 결과를 요구한다. UPDATE_SOURCES는 구조 유지이며 추가 출처만 준비 결과가 필요하고 기존 유지 출처 데이터는 유지한다. 추가·삭제가 함께 있으면 추가 준비가 끝난 뒤 이 요청 하나로 함께 반영한다. 프로젝트당 승인 변경은 하나씩 적용하며 같은 schema_version의 출처 변경끼리도 직렬화한다. 승인 시점과 적용 시점의 불일치를 schema_version만으로 감지할 수는 없으므로 Control의 현재 승인 change_job_id도 대조한다.
+operation은 REPLACE 또는 UPDATE_SOURCES다. REPLACE는 스키마 구조 변경이며 최종 출처 전부의 PREPARE 결과를 요구한다. UPDATE_SOURCES는 구조 유지의 삭제에만 사용한다. 구조 유지 출처 추가는 APPROVED_SOURCE_APPEND로 별도 적재·공개한다. 추가와 삭제가 함께 있으면 모든 추가 출처가 정상 적재된 후에만 삭제 요청을 보낸다. 추가 실패 시 기존 출처는 유지하고 성공한 추가 출처는 공개 상태를 유지한다. 삭제 실패는 이미 공개된 추가 출처를 되돌리지 않고 재시도·상태 표시한다. 프로젝트당 승인 변경은 하나씩 적용하며 같은 schema_version의 출처 변경끼리도 직렬화한다. 승인 시점과 적용 시점의 불일치를 schema_version만으로 감지할 수는 없으므로 Control의 현재 승인 change_job_id도 대조한다.
 
 보완 제안: 해당 프로젝트의 실행 중 쓰기가 종료되도록 Control이 조정한 뒤 적용 요청을 보낸다. Ingestion은 프로젝트 데이터 상태 행을 잠그고, 준비 결과의 프로젝트·출처·스키마 버전·change_job_id를 검증하며 데이터 반영·삭제 차단 표시·데이터 revision·적용 완료 기록·결과 Outbox를 같은 트랜잭션에 기록한다. 프로젝트의 일반 적재·삭제도 동일한 상태 행을 기준으로 쓰기를 조정한다. 이로써 삭제 직후 늦게 도착한 구작업이 데이터를 다시 넣지 못하게 한다.
 
-같은 API 버전 내 출처 추가·삭제도 현재 dataset_revision을 바꾼다. 구조 변경이면 데이터와 공개 스키마 버전 포인터를 Ingestion 데이터 계층에서 함께 전환하고 Data API가 그 상태를 읽는 안을 제안한다. Control은 완료 결과로 운영 상태·후보 적용 상태를 갱신한다. Control의 메타데이터 반영 전이라도 Data API가 데이터와 다른 스키마를 섞어 읽지 않게 해야 한다. 캐시 무효화와 이 포인터 소유권은 최종 확인 항목이다.
+같은 API 버전 내 출처 추가·삭제도 현재 dataset_revision을 바꾼다. 구조 변경이면 Ingestion이 데이터 DB의 공개 스키마 버전 포인터를 전환하고 Data API가 해당 버전의 필드 정의와 레코드를 일관되게 읽는다. RECORD는 한 테이블에 project_id·project_source_id·schema_version 및 준비 작업 식별자를 보관한다. DATASET 별도 테이블은 필요하지 않다. 같은 대상 버전의 예전 취소·실패 준비 행이 노출되지 않도록 전환 트랜잭션에서 승인된 change_job_id의 성공 prepared_job_id 목록에 속하지 않는 비공개 행을 정리하고, 나열된 대상별 결과를 확인한 뒤 전환한다. 이전 버전 정리는 전환 성공 후 수행한다. Control은 완료 결과로 운영 상태·후보 적용 상태를 갱신한다. Control의 메타데이터 반영 전이라도 Data API가 데이터와 다른 스키마를 섞어 읽지 않게 해야 한다. Control 반영 지연에도 Data API의 버전별 스키마와 레코드가 섞이지 않도록 캐시 무효화·조회 경계를 구현한다.
 
 ### 10.2 dataset.applied payload
 
@@ -993,7 +965,7 @@ Control은 단순 준비 완료가 아니라 dataset.applied 성공을 받은 �
 }
 ```
 
-별도 출처 삭제 명령·이벤트는 만들지 않는다. 추가·삭제가 함께 있으면 같은 dataset.apply에 준비 작업과 삭제 대상을 함께 전달하고, 준비가 끝나기 전에는 적용하지 않는다. 재전달에 대한 멱등 처리와 프로젝트 쓰기 조정, 삭제된 출처에 대한 늦은 적재 차단은 일반 dataset.apply와 동일하다. 이미 완료한 적용 작업은 기존 결과를 반환한다. 다른 프로젝트의 연결과 데이터는 영향을 받지 않는다.
+별도 출처 삭제 명령·이벤트는 만들지 않는다. 추가·삭제가 함께 있으면 모든 추가 출처의 APPROVED_SOURCE_APPEND 성공 후 prepared_results=[]인 삭제 요청을 보낸다. 추가 실패·0건이면 삭제하지 않는다. 재전달에 대한 멱등 처리와 프로젝트 쓰기 조정, 삭제된 출처에 대한 늦은 적재 차단은 일반 dataset.apply와 동일하다. 이미 완료한 적용 작업은 기존 결과를 반환한다. 다른 프로젝트의 연결과 데이터는 영향을 받지 않는다.
 
 처리 완료된 삭제의 차단 식별정보를 즉시 없애면 늦은 적재를 막을 수 없으므로 적어도 메시지 재처리 가능 기간 동안 유지한다. 이는 사용자 레코드의 삭제 이력을 제공하는 기능과 구분한다.
 
@@ -1102,7 +1074,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 
 ## 13 참고 근거
 
-- 흐름·그림 기준 문서: output/docx/캡스톤_시스템_흐름_설명서.docx
+- 흐름·그림 기준 문서: output/docx/캡스톤_시스템_흐름_설명서_ERD_수정본.docx
 - 상세 전달 순서: service-message-flows.md 3.1~3.20
 - 제품·구성 보조 문서: output/docx/캡스톤_설계제안서_작업메시지_수정본.docx
 - 프로젝트 결정 로그: spec-decision-log.md
@@ -1355,24 +1327,20 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 
 ### 15.11 기존 프로젝트에 출처 추가
 
-대응 설명서: 11절 「기존 프로젝트에 출처 추가」·그림 11. 전달 순서: service-message-flows.md 3.11.
-[기존 + 구현 보완] 기존 스키마에 맞춘 출처 분석부터 승인·최초 수집·준비·적용까지 연결한다. 구조가 바뀌면 설명서 13절·그림 13으로 이어진다.
+- 설명서: 11절·그림 11. 메시지 형식: 6.1, 6.2, 7.2, 7.3, 8.1, 8.2.
+- 기존 스키마에 맞춰 분석·검증하고 사용자가 최종 후보를 승인한다. 구조가 변경되면 3.13의 리비전으로 진행한다.
 
-| 단계 | 보내는 쪽 → 받는 쪽 | 방식·메시지 | 필수 값 또는 조건 | 받은 뒤 처리·다음 단계 |
-|---|---|---|---|---|
-| 1 | 웹 → Control | HTTP POST /control/v1/projects/{p}/sources | list_url | 새 project_source_id를 가진 등록 후보 생성. 기존 활성 설정 유지 |
-| 2 | 웹 → Control | HTTP POST /control/v1/projects/{p}/analyses | mode=source_attachment, 대상 출처 | 현재 스키마와 변경 후보를 가진 분석 생성 |
-| 3 | Control → Analysis | SQS analysis.execute | purpose=ADD_SOURCE, 기존 스키마·새 출처 | 새 공통 스키마를 자유롭게 만들지 않고 기존 필드에 매핑 |
-| 4 | Analysis ↔ 사이트·S3 | 브라우저·샘플 저장 | 필드 위치·CSS·이동·parser.code | 정상/원래 없음/추출 실패/변환 실패를 구분해 검증 |
-| 5 | Analysis → Control | SQS analysis.completed | 후보·필드별 결과·sample_ref | 원래 없는 nullable 필드는 null로 허용. 추출 오류를 필드 없음으로 간주하지 않음 |
-| 6 | 웹 ↔ Control ↔ Analysis | 수정·analysis.execute(REVALIDATE)·결과 | 필요한 매핑 수정과 revision | 15.3 재검증을 공유 |
-| 7 | 웹 → Control | HTTP approve | 검증된 최신 후보 | 동일 공유 출처 판정과 승인 설정 확정. 데이터 적용은 아직 보류 |
-| 8a | Control → Crawler | SQS collection.execute(INITIAL) | 새 연결 FULL, 최대 300초 | 해당 규칙·대상으로 수집 실행 |
-| 8b | Crawler → Control | SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 공유 출처 실행 중이면 종료 뒤 신규 연결 최초 수집 |
-| 9a | Control → Ingestion | SQS ingestion.execute(PREPARE) | 승인 change_job_id, 새 출처 스냅샷 | 해당 적재·준비·적용·삭제 작업 실행 |
-| 9b | Ingestion → Control | SQS ingestion.completed | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 준비 작업 job_id 기록. 실패·0건이면 적용하지 않음 |
-| 10a | Control → Ingestion | SQS dataset.apply(UPDATE_SOURCES) | prepared_job_id, 최종 출처 목록, 삭제 대상 | 해당 적재·준비·적용·삭제 작업 실행 |
-| 10b | Ingestion → Control | SQS dataset.applied | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 성공 후 활성 연결·설정 반영. 실패면 기존 데이터·설정 유지 |
+| 순서 | 송신 → 수신 | 내용과 처리 |
+|---|---|---|
+| 1 | 웹 → Control → Analysis | 새 출처 후보를 만들고 기존 스키마로 분석·수정·재검증한다. |
+| 2 | Analysis → Control → 웹 | 후보와 샘플을 표시하고 사용자가 최신 검증 후보를 승인한다. |
+| 3 | Control → Crawler | 새 출처를 INITIAL/FULL로 최대 300초 수집한다. |
+| 4 | Crawler → Control | 결과·최종 snapshot_ref 또는 실패를 전달한다. |
+| 5 | Control → Ingestion | 승인 change_job_id와 snapshot_ref로 APPROVED_SOURCE_APPEND를 요청한다. |
+| 6 | Ingestion → Control | 성공 시 데이터를 공개하고 완료 결과를 전달한다. 0건·실패는 부분 적재를 공개하지 않고 확인·복구한다. |
+| 7 | Control | 결과를 멱등 반영해 출처를 활성화하고 상태를 표시한다. 이벤트 누락은 재발행으로 복구한다. |
+
+추가와 삭제가 함께 있으면 모든 추가가 성공한 뒤 3.12 삭제를 수행한다. 추가 실패 시 삭제하지 않으며 이미 성공한 출처는 유지한다. 삭제 실패 시 공개된 출처를 되돌리지 않고 삭제를 재시도하며 상태를 표시한다.
 
 ### 15.12 출처 삭제만 있는 변경
 
@@ -1392,22 +1360,19 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 
 ### 15.13 스키마 변경과 복합 변경의 적용
 
-대응 설명서: 13절 「스키마 변경과 복합 변경의 적용」·그림 13. 전달 순서: service-message-flows.md 3.13.
-[기존 + 구현 보완] 비활성 데이터 준비와 실제 공개 적용은 서로 다른 단계다.
+- 설명서: 13절·그림 13. 메시지 형식: 7.2, 7.3, 8.1, 8.2, 10.1, 10.2.
 
-| 단계 | 보내는 쪽 → 받는 쪽 | 방식·메시지 | 필수 값 또는 조건 | 받은 뒤 처리·다음 단계 |
-|---|---|---|---|---|
-| 1 | 웹 ↔ Control ↔ Analysis | 15.3 후보 수정·검증·승인 | 최종 스키마·출처·커넥터와 revision | 교체 시 기존 데이터·record_id·재수집 범위 밖 데이터 소멸을 승인 전에 안내 |
-| 2a | Control → Crawler | SQS collection.execute | 구조 유지: 추가 출처만 INITIAL/FULL | 삭제할 기존 출처 데이터는 준비 성공 전 유지 |
-| 2b | Control → Crawler | SQS collection.execute | 구조 변경: 최종 대상 출처마다 REVISION/FULL, 최대 300초 | 모든 대상 출처를 처음부터 재수집 |
-| 3 | Crawler → Control | SQS collection.completed | 출처별 status·snapshot_ref | 정상 대상부터 데이터 준비. 실패·0건은 전체 적용 보류 |
-| 4 | Control → Ingestion | SQS ingestion.execute | mode=PREPARE, change_job_id, 대상 스키마 버전 | 기존 API가 읽는 데이터를 건드리지 않고 새 결과 준비 |
-| 5 | Ingestion → Control | SQS ingestion.completed | 출처별 준비 작업 job_id·정상 추출 건수·status | 예상한 모든 출처의 준비 결과를 집계 |
-| 6a | Control → 웹·이메일 | 상태 조회 응답·설정 시 알림 | 하나라도 실패·정상 추출 0건 | 전체 적용 보류·기존 API 유지. 해당 오류 복구·재확인·삭제 후보 흐름으로 연결 |
-| 6b | Control → Ingestion | SQS dataset.apply | 모두 준비: REPLACE 또는 UPDATE_SOURCES, prepared_job_id 목록 | 현재 승인 작업·대상 버전 대조 후 데이터·출처 변경을 함께 반영 |
-| 7a | Ingestion → Control | SQS dataset.applied, status=SUCCEEDED | 실제 적용 버전·데이터 revision·활성 출처 | Control이 운영 설정 전환·완료 표시 |
-| 7b | Ingestion → Control | SQS dataset.applied, status=FAILED | 적용 실패 error | 데이터 트랜잭션 롤백·기존 공개 데이터 유지. 기술 재시도는 같은 작업으로 처리 |
-| 7c | Ingestion → Control | 완료 결과 재발행 | DB 적용 성공 후 응답 누락 | 기존 적용 receipt로 결과 재발행. 이미 전환된 데이터를 다시 교체하거나 되돌리지 않음 |
+| 순서 | 송신 → 수신 | 내용과 처리 |
+|---|---|---|
+| 1 | 웹 → Control | 재수집 범위·기존 데이터 및 record_id 교체 영향을 안내하고 검증된 최종 스키마를 승인받는다. |
+| 2 | Control → Crawler | 최종 대상 출처마다 REVISION/FULL로 처음부터 최대 300초 수집한다. |
+| 3 | Crawler → Control | 출처별 결과·snapshot_ref를 전달한다. |
+| 4 | Control → Ingestion | 각 성공 출처를 PREPARE로 요청한다. 한 RECORD 테이블에 새 schema_version·준비 job_id로 미공개 저장한다. |
+| 5 | Ingestion → Control | 출처별 준비 상태·정상 추출 건수와 job_id를 반환한다. 실패·0건이면 전체 교체를 보류하고 이전 API와 데이터를 유지한다. |
+| 6 | Control → Ingestion | 모두 성공했을 때 dataset.apply(REPLACE)로 준비 job_id 목록을 전달한다. |
+| 7 | Ingestion → Control | 공개 데이터 버전·스키마를 일관되게 전환하고 결과를 발행한다. Control은 운영 설정을 반영한다. 이전 데이터는 전환 성공 후 정리한다. |
+
+구조가 유지되는 출처 추가·삭제는 3.11~3.12의 순차 처리다. 구조 변경이 함께 있으면 이 흐름의 모든 최종 대상 출처 준비 후 일괄 전환을 유지한다.
 
 ### 15.14 회원 인증과 계정 기본 설정
 

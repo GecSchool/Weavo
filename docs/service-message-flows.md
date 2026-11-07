@@ -2,7 +2,7 @@
 
 - 작성일: 2026-11-07
 - 형식 기준 파일: service-message-contracts.md
-- 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서.docx
+- 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서_ERD_수정본.docx
 - 흐름 대응: 설명서 N절·그림 N ↔ 이 MD 3.N ↔ 메시지 명세 MD 15.N. N은 1~20이다.
 - 목적: 각 기능·예외에서 누가 누구에게 무엇을 보내는지 순서대로 읽고, 각 단계의 메시지 형식을 절 번호로 찾는다.
 
@@ -29,7 +29,7 @@
 | analysis.completed | Analysis → Control | 6.2, 16.2 | 성공·부분 성공·실패 결과. 복구 문맥은 16.3도 참고 | 1, 2, 3, 8, 9, 10, 11 |
 | collection.execute | Control → Crawler | 7.2 | 최초·정기·수동·리비전·복구 수집 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | collection.completed | Crawler → Control | 7.3 | 종료 사유·스냅샷·프로젝트별 적재 가능 여부 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
-| ingestion.execute | Control → Ingestion | 8.1 | APPEND 일반 적재 / PREPARE 비활성 준비 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
+| ingestion.execute | Control → Ingestion | 8.1 | APPEND 일반 적재 / APPROVED_SOURCE_APPEND 승인 출처 적재 / PREPARE 비활성 준비 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | ingestion.completed | Ingestion → Control | 8.2, 16.2 | 정상 추출 건수·적재 또는 준비 결과·실패 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | job.issue.detected | Crawler / Ingestion → Control | 9.1, 16.3 | 작업 중 오류·목록 0건·프로젝트 정상 추출 0건 | 7, 8, 9, 10 |
 | dataset.apply | Control → Ingestion | 10.1, 10.3 | 데이터 교체·출처 변경 적용. 10.3은 삭제만 있는 경우 | 11, 12, 13 |
@@ -270,26 +270,20 @@
 
 ### 3.11 기존 프로젝트에 출처 추가
 
-- 설명서: 11절 「기존 프로젝트에 출처 추가」·그림 11.
-- 메시지 명세의 상황별 전송 표: 15.11.
+- 설명서: 11절·그림 11. 메시지 형식: 6.1, 6.2, 7.2, 7.3, 8.1, 8.2.
+- 기존 스키마에 맞춰 분석·검증하고 사용자가 최종 후보를 승인한다. 구조가 변경되면 3.13의 리비전으로 진행한다.
 
-[기존 + 구현 보완] 기존 스키마에 맞춘 출처 분석부터 승인·최초 수집·준비·적용까지 연결한다. 구조가 바뀌면 설명서 13절·그림 13으로 이어진다.
+| 순서 | 송신 → 수신 | 내용과 처리 |
+|---|---|---|
+| 1 | 웹 → Control → Analysis | 새 출처 후보를 만들고 기존 스키마로 분석·수정·재검증한다. |
+| 2 | Analysis → Control → 웹 | 후보와 샘플을 표시하고 사용자가 최신 검증 후보를 승인한다. |
+| 3 | Control → Crawler | 새 출처를 INITIAL/FULL로 최대 300초 수집한다. |
+| 4 | Crawler → Control | 결과·최종 snapshot_ref 또는 실패를 전달한다. |
+| 5 | Control → Ingestion | 승인 change_job_id와 snapshot_ref로 APPROVED_SOURCE_APPEND를 요청한다. |
+| 6 | Ingestion → Control | 성공 시 데이터를 공개하고 완료 결과를 전달한다. 0건·실패는 부분 적재를 공개하지 않고 확인·복구한다. |
+| 7 | Control | 결과를 멱등 반영해 출처를 활성화하고 상태를 표시한다. 이벤트 누락은 재발행으로 복구한다. |
 
-| 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
-|---|---|---|---|---|
-| 1 | 웹 → Control / HTTP POST /control/v1/projects/{p}/sources | list_url | 12.2, 15.11 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 새 project_source_id를 가진 등록 후보 생성. 기존 활성 설정 유지 |
-| 2 | 웹 → Control / HTTP POST /control/v1/projects/{p}/analyses | mode=source_attachment, 대상 출처 | 12.2, 15.11 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 현재 스키마와 변경 후보를 가진 분석 생성 |
-| 3 | Control → Analysis / SQS analysis.execute | purpose=ADD_SOURCE, 기존 스키마·새 출처 | 6.1 — 메시지 형식 | 새 공통 스키마를 자유롭게 만들지 않고 기존 필드에 매핑 |
-| 4 | Analysis ↔ 사이트·S3 / 브라우저·샘플 저장 | 필드 위치·CSS·이동·parser.code | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 정상/원래 없음/추출 실패/변환 실패를 구분해 검증 |
-| 5 | Analysis → Control / SQS analysis.completed | 후보·필드별 결과·sample_ref | 6.2, 16.2 — 메시지 형식 | 원래 없는 nullable 필드는 null로 허용. 추출 오류를 필드 없음으로 간주하지 않음 |
-| 6 | 웹 ↔ Control ↔ Analysis / 수정·analysis.execute(REVALIDATE)·결과 | 필요한 매핑 수정과 revision | 6.1, 6.2, 15.3 — 메시지 형식 | 15.3 재검증을 공유 |
-| 7 | 웹 → Control / HTTP approve | 검증된 최신 후보 | 12.2, 15.11 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 동일 공유 출처 판정과 승인 설정 확정. 데이터 적용은 아직 보류 |
-| 8a | Control → Crawler / SQS collection.execute(INITIAL) | 새 연결 FULL, 최대 300초 | 7.2 — 메시지 형식 | 공유 출처 실행 중이면 먼저 종료를 기다린 뒤 신규 연결 최초 수집 |
-| 8b | Crawler → Control / SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 7.3 — 메시지 형식 | 수집 결과의 스냅샷·적재 가능 여부를 확인하고 준비 작업 생성 |
-| 9a | Control → Ingestion / SQS ingestion.execute(PREPARE) | 승인 change_job_id, 새 출처 스냅샷 | 8.1 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
-| 9b | Ingestion → Control / SQS ingestion.completed | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 8.2, 16.2, 1.4 — 메시지 형식 | 준비 작업 job_id 기록. 실패·0건이면 적용하지 않음 |
-| 10a | Control → Ingestion / SQS dataset.apply(UPDATE_SOURCES) | prepared_job_id, 최종 출처 목록, 삭제 대상 | 10.1, 10.3 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
-| 10b | Ingestion → Control / SQS dataset.applied | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 10.2, 10.4, 1.4 — 메시지 형식 | 성공 후 활성 연결·설정 반영. 실패면 기존 데이터·설정 유지 |
+추가와 삭제가 함께 있으면 모든 추가가 성공한 뒤 3.12 삭제를 수행한다. 추가 실패 시 삭제하지 않으며 이미 성공한 출처는 유지한다. 삭제 실패 시 공개된 출처를 되돌리지 않고 삭제를 재시도하며 상태를 표시한다.
 
 ### 3.12 출처 삭제만 있는 변경
 
@@ -311,24 +305,19 @@
 
 ### 3.13 스키마 변경과 복합 변경의 적용
 
-- 설명서: 13절 「스키마 변경과 복합 변경의 적용」·그림 13.
-- 메시지 명세의 상황별 전송 표: 15.13.
+- 설명서: 13절·그림 13. 메시지 형식: 7.2, 7.3, 8.1, 8.2, 10.1, 10.2.
 
-[기존 + 구현 보완] 비활성 데이터 준비와 실제 공개 적용은 서로 다른 단계다.
+| 순서 | 송신 → 수신 | 내용과 처리 |
+|---|---|---|
+| 1 | 웹 → Control | 재수집 범위·기존 데이터 및 record_id 교체 영향을 안내하고 검증된 최종 스키마를 승인받는다. |
+| 2 | Control → Crawler | 최종 대상 출처마다 REVISION/FULL로 처음부터 최대 300초 수집한다. |
+| 3 | Crawler → Control | 출처별 결과·snapshot_ref를 전달한다. |
+| 4 | Control → Ingestion | 각 성공 출처를 PREPARE로 요청한다. 한 RECORD 테이블에 새 schema_version·준비 job_id로 미공개 저장한다. |
+| 5 | Ingestion → Control | 출처별 준비 상태·정상 추출 건수와 job_id를 반환한다. 실패·0건이면 전체 교체를 보류하고 이전 API와 데이터를 유지한다. |
+| 6 | Control → Ingestion | 모두 성공했을 때 dataset.apply(REPLACE)로 준비 job_id 목록을 전달한다. |
+| 7 | Ingestion → Control | 공개 데이터 버전·스키마를 일관되게 전환하고 결과를 발행한다. Control은 운영 설정을 반영한다. 이전 데이터는 전환 성공 후 정리한다. |
 
-| 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
-|---|---|---|---|---|
-| 1 | 웹 ↔ Control ↔ Analysis / 15.3 후보 수정·검증·승인 | 최종 스키마·출처·커넥터와 revision | 15.3, 6.1, 6.2 — 공통 후보 수정·검증·승인 흐름 | 교체 시 기존 데이터·record_id·재수집 범위 밖 데이터 소멸을 승인 전에 안내 |
-| 2a | Control → Crawler / SQS collection.execute | 구조 유지: 추가 출처만 INITIAL/FULL | 7.2 — 메시지 형식 | 삭제할 기존 출처 데이터는 준비 성공 전 유지 |
-| 2b | Control → Crawler / SQS collection.execute | 구조 변경: 최종 대상 출처마다 REVISION/FULL, 최대 300초 | 7.2 — 메시지 형식 | 모든 대상 출처를 처음부터 재수집 |
-| 3 | Crawler → Control / SQS collection.completed | 출처별 status·snapshot_ref | 7.3 — 메시지 형식 | 정상 대상부터 데이터 준비. 실패·0건은 전체 적용 보류 |
-| 4 | Control → Ingestion / SQS ingestion.execute | mode=PREPARE, change_job_id, 대상 스키마 버전 | 8.1 — 메시지 형식 | 기존 API가 읽는 데이터를 건드리지 않고 새 결과 준비 |
-| 5 | Ingestion → Control / SQS ingestion.completed | 출처별 준비 작업 job_id·정상 추출 건수·status | 8.2, 16.2 — 메시지 형식 | 예상한 모든 출처의 준비 결과를 집계 |
-| 6a | Control → 웹·이메일 / 상태 조회 응답·설정 시 알림 | 하나라도 실패·정상 추출 0건 | 12.2, 15.18 — 상황만 명시; 공급자 전송 형식 미정 | 전체 적용 보류·기존 API 유지. 해당 오류 복구·재확인·삭제 후보 흐름으로 연결 |
-| 6b | Control → Ingestion / SQS dataset.apply | 모두 준비: REPLACE 또는 UPDATE_SOURCES, prepared_job_id 목록 | 10.1, 10.3 — 메시지 형식 | 현재 승인 작업·대상 버전 대조 후 데이터·출처 변경을 함께 반영 |
-| 7a | Ingestion → Control / SQS dataset.applied, status=SUCCEEDED | 실제 적용 버전·데이터 revision·활성 출처 | 10.2, 10.4 — 메시지 형식 | Control이 운영 설정 전환·완료 표시 |
-| 7b | Ingestion → Control / SQS dataset.applied, status=FAILED | 적용 실패 error | 10.2, 10.4, 1.4 — 메시지 형식 | 데이터 트랜잭션 롤백·기존 공개 데이터 유지. 기술 재시도는 같은 작업으로 처리 |
-| 7c | Ingestion → Control / 완료 결과 재발행 | DB 적용 성공 후 응답 누락 | 10.2, 3.2, 11 — 기존 적용 완료 결과 재발행 | 기존 적용 receipt로 결과 재발행. 이미 전환된 데이터를 다시 교체하거나 되돌리지 않음 |
+구조가 유지되는 출처 추가·삭제는 3.11~3.12의 순차 처리다. 구조 변경이 함께 있으면 이 흐름의 모든 최종 대상 출처 준비 후 일괄 전환을 유지한다.
 
 ### 3.14 회원 인증과 계정 기본 설정
 
