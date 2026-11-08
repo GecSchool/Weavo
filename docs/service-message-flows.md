@@ -1,7 +1,7 @@
 # 기능별 메시지 전달 순서와 형식 참조
 
 - 작성일: 2026-11-07
-- 형식 기준 파일: service-message-contracts.md
+- 형식 기준 파일: service-message-contracts.md. S3 객체의 경로·본문·정리 조건: [S3 저장 명세](s3-storage-contract.md).
 - 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서_ERD_수정본.docx
 - 흐름 대응: 설명서 N절·그림 N ↔ 이 MD 3.N ↔ 메시지 명세 MD 15.N. N은 1~20이다.
 - 목적: 각 기능·예외에서 누가 누구에게 무엇을 보내는지 순서대로 읽고, 각 단계의 메시지 형식을 절 번호로 찾는다.
@@ -72,13 +72,13 @@
 | 5 | Control → Analysis / SQS analysis.execute | purpose=INITIAL, sources, collection_purpose, revision | 6.1 — 메시지 형식 | 대상 출처별 분석 시작 |
 | 6 | Analysis ↔ 사이트 / 브라우저 요청·응답 | 시작 URL·목록·상세·다음 목록 후보 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 렌더링 DOM 확보. 추출·탐색 후보 검증 |
 | 7 | Analysis ↔ LLM / 외부 API 요청·응답 | DOM의 필요한 정보·수집 목적·검증 실패 관찰 | 6.1, 6.2, 15.1 — 후보 입출력; 모델 API body는 별도 | 필드·선택자·이동·파싱 코드 후보 생성. 부적합하면 예산 내 재생성 |
-| 8 | Analysis → S3 / 객체 저장 | 분석·출처별 중간 결과 | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 성공 출처의 후보·샘플·매핑 정보를 모음 |
-| 9 | Analysis ↔ S3·LLM / 객체 조회·외부 API | 출처별 중간 결과 | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 공통 스키마 추천. Control에 별도 공동 추천 요청을 요구하지 않음 |
+| 8 | Analysis → S3 / 객체 저장 | 분석·출처별 중간 결과 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 성공 출처의 후보·샘플·매핑 정보를 모음 |
+| 9 | Analysis ↔ S3·LLM / 객체 조회·외부 API | 출처별 중간 결과 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 공통 스키마 추천. Control에 별도 공동 추천 요청을 요구하지 않음 |
 | 10 | Analysis ↔ 사이트 / 브라우저·HTTP 검증 | 공통 후보와 출처별 규칙 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 실제 이동·추출 검증 및 목록/상세별 HTTP 가능 여부 내부 확인 |
-| 11 | Analysis → S3 / 객체 저장 | analysis_id·revision·출처별 검증 샘플 | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 저장 성공 후에만 승인 가능한 성공 결과 생성 |
-| 12 | Analysis → Control / SQS analysis.completed | revision, candidate, source_results, sample_ref | 6.2, 16.2 — 메시지 형식 | 현재 분석·revision 대조 후 후보와 상태 저장 |
+| 11 | Analysis → S3 / 객체 저장 | analysis_id·revision·출처별 검증 샘플 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 저장 성공 후에만 승인 가능한 성공 결과 생성 |
+| 12 | Analysis → Control / SQS analysis.completed | revision, candidate, source_results, sample_ref, intermediate_ref | 6.2, 16.2 — 메시지 형식 | 현재 분석·revision 대조 후 후보·출처별 intermediate_ref·sample_ref와 상태 저장 |
 | 13 | 웹 ↔ Control / HTTP GET /control/v1/projects/{p}/analyses/{a} | analysis_id | 12.2, 15.1 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 진행 상태·후보·출처별 오류 조회 |
-| 14 | Control ↔ S3 / 객체 조회·응답 | 현재 revision의 sample_ref | 1.3, 15.1 — S3 참조·상황; 객체/API 상세는 미정 | 분석 조회 응답에 샘플 포함 |
+| 14 | Control ↔ S3 / 객체 조회·응답 | 현재 revision의 sample_ref | 1.3, 15.1 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답 상세는 미정 | 분석 조회 응답에 샘플 포함 |
 | 15a | Control → 웹 / HTTP 조회 응답 | status=SUCCEEDED 또는 PARTIAL | 12.2, 15.1 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 성공 출처 후보와 실패 출처를 함께 표시. 수정·승인 또는 15.2 연결 |
 | 15b | Control → 웹 / HTTP 조회 응답 | status=FAILED, 출처별 error | 12.2, 15.1 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 확인 필요 표시. 재시도·제외 선택. 성공하지 않은 후보를 승인하지 않음 |
 
@@ -93,8 +93,8 @@
 |---|---|---|---|---|
 | 1 | 웹 → Control / HTTP POST /control/v1/projects/{p}/analyses/{a}/sources/{s}/retry | 대상 project_source_id | 12.2, 15.2 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 현재 후보·revision 확인. 새 재시도 작업 생성 |
 | 2 | Control → 웹 / HTTP 202 | job_id | 12.2, 15.2 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 작업·분석 조회로 상태 확인 |
-| 3 | Control → Analysis / SQS analysis.execute | purpose=RETRY_SOURCE, current_candidate, sources, revision | 6.1 — 메시지 형식 | 해당 출처만 재분석하고 현재 공동 후보에 맞춘 매핑·검증 수행 |
-| 4 | Analysis ↔ 사이트·LLM·S3 / 브라우저·외부 API·객체 저장 | 해당 출처·공동 후보·새 샘플 | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 기존 사용자 수정 보존. Analysis 내부에서 공동 후보 반영안을 구성 |
+| 3 | Control → Analysis / SQS analysis.execute | purpose=RETRY_SOURCE, current_candidate, sources, revision, intermediate_refs | 6.1 — 메시지 형식 | 해당 출처만 재분석하고 현재 공동 후보에 맞춘 매핑·검증 수행 |
+| 4 | Analysis ↔ 사이트·LLM·S3 / 브라우저·외부 API·객체 저장 | 해당 출처·공동 후보·새 샘플 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 기존 사용자 수정 보존. Analysis 내부에서 공동 후보 반영안을 구성 |
 | 5a | Analysis → Control / SQS analysis.completed | status=SUCCEEDED, candidate, source_results, revision | 6.2, 16.2 — 메시지 형식 | 현재 revision과 일치하면 대상 출처의 결과만 반영 |
 | 5b | Analysis → Control / SQS analysis.completed | status=FAILED, source_results[].error | 6.2, 16.2, 1.4 — 메시지 형식 | 실패 상태 유지. 사용자는 재시도 또는 제외 가능 |
 | 5c | Control 내부 / 결과 적용 검사 | 반환 revision이 현재 후보와 다름 | 11, 15.3 — 내부 처리; 전송 JSON 없음 | 현재 후보를 덮지 않음. 최신 후보를 기준으로 새 작업·재검증 필요 |
@@ -113,10 +113,10 @@
 |---|---|---|---|---|
 | 1 | 웹 → Control / HTTP PATCH /control/v1/projects/{p}/analyses/{a}/candidate | expected_revision, fields, source_rules, excluded_project_source_ids | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 조건부 DB 갱신으로 revision 증가. 동시 수정 충돌은 409 |
 | 2a | Control → Analysis / SQS analysis.execute | purpose=REVALIDATE, 현재 후보, 영향 출처, 새 revision | 6.1 — 메시지 형식 | 이동·추출·파싱·타입·HTTP 가능 여부를 검증 |
-| 2b | Control 내부 / 검증 승계 | 재검증이 불필요한 변경 | 11, 15.3 — 내부 처리; 전송 JSON 없음 | 새 revision에 유효한 기존 검증을 승계. Analysis 메시지 없음 |
-| 3 | Analysis → S3 / 객체 저장 | 새 revision의 검증 샘플 | 1.3, 15.3 — S3 참조·상황; 객체/API 상세는 미정 | 이전 샘플과 구분. 저장 실패는 검증 성공으로 반영하지 않음 |
-| 4 | Analysis → Control / SQS analysis.completed | 목표 revision, validation_status, source_results | 6.2, 16.2 — 메시지 형식 | 현재 revision 일치 시에만 검증 결과 반영 |
-| 5 | 웹 ↔ Control·S3 / HTTP 분석 조회 / Control의 S3 조회 | 현재 후보·샘플·출처별 실패 | 1.3, 15.3 — S3 참조·상황; 객체/API 상세는 미정 | 사용자에게 수정 결과 표시 |
+| 2b | Control 내부 / 검증 승계 | 재검증이 불필요한 변경 | 11, 15.3 — 내부 처리; 전송 JSON 없음 | 새 후보에 기존 검증을 승계하고 sample_revision·sample_ref와 승계 근거 유지. Analysis 메시지 없음 |
+| 3 | Analysis → S3 / 객체 저장 | 새 revision의 검증 샘플 | 1.3, 15.3 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답 상세는 미정 | 이전 샘플과 구분. 저장 실패는 검증 성공으로 반영하지 않음 |
+| 4 | Analysis → Control / SQS analysis.completed | 목표 revision, validation_status, source_results | 6.2, 16.2 — 메시지 형식 | 현재 revision 일치 시 검증 결과·sample_revision·sample_ref 반영 |
+| 5 | 웹 ↔ Control·S3 / HTTP 분석 조회 / Control의 S3 조회 | 현재 후보·샘플·출처별 실패·match_count | 1.3, 15.3 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답 상세는 미정 | 사용자에게 수정 결과 표시 |
 | 6 | 웹 → Control / HTTP POST /control/v1/projects/{p}/analyses/{a}/approve | candidate_revision | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 후보·검증 revision과 승인 조건을 원자적으로 확인 |
 | 7a | Control → 웹 / HTTP 409 또는 422 | revision 충돌 또는 검증 미완료·실패 | 12.2, 15.3, 1.4 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 승인하지 않고 원인 표시. 수정·검증 흐름으로 복귀 |
 | 7b | Control → 웹 / HTTP 202 | 승인·적용 상위 job_id | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 승인 설정·샘플 연결 기록. 신규면 15.4, 출처 변경이면 15.11~12, 구조 변경이면 15.13 |
@@ -135,7 +135,7 @@
 | 1 | Control 내부 / 승인 설정·작업 생성 | source_id, 활성 프로젝트와 승인 규칙 | 11 — 내부 처리; 전송 JSON 없음 | 실행 중 같은 출처가 있으면 새 연결 최초 수집을 후속 예약 |
 | 2 | Control → Crawler / SQS collection.execute | execution_reason=INITIAL, 신규 대상 collection_mode=FULL, latest_records=[] | 7.2 — 메시지 형식 | 첫 목록부터 수집. FULL 대상은 최신값 일치 조기 종료 제외. 최대 300초 |
 | 3 | Crawler ↔ 사이트 / HTTP·브라우저 | 승인된 목록·상세·다음 목록/스크롤 규칙 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 필요한 상세 공유 수집. 오류는 15.7~10으로 분기 |
-| 4 | Crawler → S3 / 최종 manifest·객체 저장 | 작업별 불변 snapshot_ref | 1.3, 5.3 — S3 참조·manifest 형식 | 결과 확정 및 재전달에 필요한 정보 보관 |
+| 4 | Crawler → S3 / 시도별 manifest·객체 저장 및 작업별 결과 확정 | 채택된 시도의 불변 snapshot_ref | 1.3, 5.3 — S3 참조·manifest 형식 | 결과 확정 및 재전달에 필요한 정보 보관 |
 | 5 | Crawler → Control / SQS collection.completed | 종료 사유, project_results, snapshot_ref | 7.3 — 메시지 형식 | 적재 가능한 대상별 작업 생성 |
 | 6 | Control → Ingestion / SQS ingestion.execute | mode=APPEND, 프로젝트·출처·규칙·snapshot_ref | 8.1 — 메시지 형식 | 신규 프로젝트 데이터 추출·검증·역순 저장 |
 | 7 | Ingestion ↔ S3·DB / 객체 조회·DB 트랜잭션 | 스냅샷과 커넥터 | 11 — 내부 처리; 전송 JSON 없음 | 기존값 비교·신규 저장·receipt·결과 Outbox 기록 |
@@ -218,7 +218,7 @@
 | 2a | Control → Ingestion / 내부 HTTP 최신값 조회 | source_id, project_ids | 16.1 — 내부 HTTP 형식 | 최신 저장 필드값을 조회 |
 | 2b | Ingestion → Control / HTTP 200 또는 오류 | 대상별 latest_records 또는 정형 error | 16.1, 1.4 — 내부 HTTP 형식 | 조회 오류는 복구 기준 없음과 구분 |
 | 3 | Control → Analysis / SQS analysis.execute | purpose=REPAIR_NAVIGATION, 현재 규칙, recovery_baselines, failure_context | 6.1, 16.3 — 메시지 형식 | 브라우저에서 새 이동 후보 실행·검증 |
-| 4 | Analysis ↔ S3 / 승인 샘플 조회 | DB 0건 대상의 approved_sample_ref | 1.3, 6.1, 6.2 — 참조·후보 형식; 중간 객체 상세는 미정 | 기준이 없거나 검증 불가이면 자동 적용하지 않음 |
+| 4 | Analysis ↔ S3 / 승인 샘플 조회 | DB 0건 대상의 approved_sample_ref | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | DB 1~2건은 전부 일치해야 하며 0건은 승인 샘플 사용. 기준 없거나 검증 불가면 자동 적용하지 않음 |
 | 5a | Analysis → Control / SQS analysis.completed | validation PASSED, schema_change_required=false, 모든 영향 대상 검증 | 6.2, 16.2 — 메시지 형식 | 규칙 revision 갱신 및 자동 적용. 사용자 승인 없이 재수집 |
 | 5b | Analysis → Control / SQS analysis.completed | schema_change_required=true, 후보·샘플 | 6.2, 16.2 — 메시지 형식 | 해당 프로젝트별 사용자 검토·승인 흐름으로 연결 |
 | 5c | Analysis → Control / SQS analysis.completed | FAILED 또는 UNVERIFIABLE, error | 6.2, 16.2, 1.4 — 메시지 형식 | 확인 필요 상태 유지. 사용자 수정·재검증 안내 |
@@ -238,7 +238,7 @@
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
 | 1a | Crawler → Control / job.issue.detected 또는 collection.completed | scope=PROJECT_SOURCE, 임시 추출·parser 실패 | 7.3, 9.1, 16.3, 1.4 — 메시지 형식 | 해당 프로젝트·출처의 비교 중단. 다른 정상 프로젝트는 계속 |
-| 1b | Ingestion → Control / job.issue.detected 또는 ingestion.completed | 최종 추출·변환·parser 실패 | 8.2, 16.2, 9.1, 16.3, 1.4 — 메시지 형식 | DB/S3 기술 오류와 구분. 임계값·부분 저장 기준은 별도 미정 |
+| 1b | Ingestion → Control / job.issue.detected 또는 ingestion.completed | 최종 추출·변환·parser 실패, 확보 시 failure_evidence 참조 | 8.2, 16.2, 9.1, 16.3, 1.4 — 메시지 형식 | DB/S3 기술 오류와 구분. 원문은 7일 sidecar에서 확인. 임계값·부분 저장 기준은 별도 미정 |
 | 2a | Control → Ingestion / 내부 HTTP 최신값 조회 | source_id, project_ids | 16.1 — 내부 HTTP 형식 | 최신 저장 필드값을 조회 |
 | 2b | Ingestion → Control / HTTP 200 또는 오류 | 대상별 latest_records 또는 정형 error | 16.1, 1.4 — 내부 HTTP 형식 | 복구 기준 확보. DB 0건이면 승인 샘플 참조 준비 |
 | 3 | Control → Analysis / SQS analysis.execute | purpose=REPAIR_CONNECTOR, 현재 스키마·커넥터·기준·실패 정보 | 6.1, 16.3, 1.4 — 메시지 형식 | 같은 스키마를 유지하는 파싱·선택자 후보 생성·검증 |
@@ -301,7 +301,7 @@
 | 4 | 웹 → Control / HTTP approve | candidate_revision | 12.2, 15.12 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 현재 검증·후보·삭제 승인 조건 확인 |
 | 5 | Control → Ingestion / SQS dataset.apply | operation=UPDATE_SOURCES, prepared_results=[], delete_project_source_ids | 10.3 — 메시지 형식 | 남은 출처 재수집 없이 삭제. 프로젝트 쓰기 차단·멱등 적용 |
 | 6 | Ingestion → Control / SQS dataset.applied | status, active_project_source_ids, dataset_revision | 10.4 — 메시지 형식 | 성공하면 활성 연결 해제 완료 표시. 실패면 기존 상태 유지·기술 재처리 |
-| 7 | Control → Scheduler·S3 / AWS API·객체 정리 | 삭제 후 공유 출처의 활성 연결이 0개인지 | 1.3, 15.12 — S3 참조·상황; 객체/API 상세는 미정 | 마지막 연결에만 일정 정리. 참조 중 스냅샷은 작업 종료 후 삭제 |
+| 7 | Control → Scheduler·S3 / AWS API·객체 정리 | 삭제 후 공유 출처의 활성 연결이 0개인지 | 1.3, 15.12 — S3 참조·상황; S3 저장 명세 4.4~4.5절 — 스냅샷 정리 | 마지막 연결에만 일정 정리. 참조 중 스냅샷은 작업 종료 후 삭제 |
 
 ### 3.13 스키마 변경과 복합 변경의 적용
 
@@ -383,8 +383,8 @@
 | 4 | Control → Ingestion / SQS project-data.delete [제안] | project_id | 16.4 — 메시지 형식 | 활성 데이터·비활성 준비 데이터·관련 데이터 메타데이터 전체 정리 |
 | 5a | Ingestion → Control / SQS project-data.deleted | status=SUCCEEDED, project_id | 16.4 — 메시지 형식 | Control이 프로젝트 설정·키·출처 연결·분석 후보 정리 조정 |
 | 5b | Ingestion → Control / SQS project-data.deleted | status=FAILED, error | 16.4, 1.4 — 메시지 형식 | 삭제 완료로 표시하지 않음. 기술 재처리·최종 실패 안내. 대상 프로젝트는 삭제 중 상태 유지 |
-| 6 | Control → Redis·S3·Scheduler / 캐시 무효화·객체/일정 정리 | 프로젝트 키·샘플 및 연결이 사라진 공유 출처 | 1.3, 15.16 — S3 참조·상황; 객체/API 상세는 미정 | 공유 출처는 다른 프로젝트 연결이 있으면 유지. 참조 중 객체는 작업 종료 후 정리 |
-| 7 | 웹 ↔ Control / HTTP 작업 조회 | 삭제 작업 job_id | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 전체 필수 정리가 끝나면 완료. 삭제된 프로젝트 자체 조회와 별개로 작업 결과 확인 경로 필요 |
+| 6 | Control → Redis·S3·Scheduler / 캐시 무효화·객체/일정 정리 | 프로젝트 전용 객체·공유 결과·큐 재처리 기간 | 1.3, 15.16; S3 저장 명세 3.4·4.4~4.5 | 다른 프로젝트는 유지하고 공유 manifest의 삭제 대상 참조를 교체. 기존 결과·대기/DLQ 메시지는 재처리 종료 후 정리 |
+| 7 | 웹 ↔ Control / HTTP 작업 조회 | 삭제 작업 job_id | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 전용 객체·공유 결과·대기/DLQ 정리를 포함해 전체 필수 정리 후 완료. 큐 보존 기간에 따라 지연 가능 |
 
 ### 3.17 회원 탈퇴와 소유 프로젝트 정리
 
@@ -435,7 +435,7 @@
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
 | 1 | SQS → 작업 서비스 / 기존 command 재전달 | 같은 job_id·같은 입력 | 3.1, 11 — 기존 요청 재전달 | 완료 기록·확정 결과가 있으면 실행 대신 기존 결과 재발행 |
-| 2 | Analysis/Crawler → S3 / 작업별 최종 결과 확정 | 결과 payload·event_id·불변 참조 | 11 — 처리 규칙; 별도 메시지 없음 | 중복 실행이 있어도 결과 하나만 채택. 실행별 객체는 서로 덮지 않음 |
+| 2 | Analysis/Crawler → S3 / 작업별 final/result.json 조건부 확정 | 전체 결과 envelope·payload·event_id·불변 참조 | 11 — 처리 규칙; 별도 메시지 없음 | 중복 실행이 있어도 결과 하나만 채택. 실행별 객체는 서로 덮지 않음 |
 | 3 | Analysis/Crawler → Control / 기존 completed 재발행 | 확정된 event_id·job_id·payload | 3.2, 11 — 기존 결과 형식·처리 규칙 | S3 저장 후 발행 전 장애를 재전달로 복구. 성공 발행 후 요청 삭제 |
 | 4 | Ingestion → DB·Outbox / 동일 트랜잭션 | 작업 receipt·데이터 변경·결과 이벤트 | 11 — 처리 규칙; 별도 메시지 없음 | 커밋 후 메시지 삭제 전에 죽어도 같은 작업은 다시 저장하지 않음 |
 | 5 | 각 서비스 → Control / 결과 중복·이전 revision 결과 | event_id, job_id, revision | 3.2, 11 — 기존 결과 형식·처리 규칙 | 중복 이벤트 무시·늦은 결과 기록. 현재 후보/정상 상태를 되돌리지 않음 |

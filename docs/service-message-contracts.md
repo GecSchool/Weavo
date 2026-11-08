@@ -3,7 +3,7 @@
 - 작성일: 2026-11-06
 - 최근 수정일: 2026-11-07
 - 상태: 구현 계약 초안. 기존 합의와 이번 검토의 보완 제안을 구분한다.
-- 목적: 기능·예외별 모든 전송 상황을 15절에서 확인하고, 각 단계의 공통 메시지 형식·payload를 1~10절과 16절에서 찾아 구현할 수 있도록 한다.
+- 목적: 기능·예외별 모든 전송 상황을 15절에서 확인하고, 각 단계의 공통 메시지 형식·payload를 1~10절과 16절에서 찾아 구현할 수 있도록 한다. S3 객체별 본문·경로·수명은 [S3 저장 명세](s3-storage-contract.md)를 따른다.
 - 흐름 기준 문서: output/docx/캡스톤_시스템_흐름_설명서_ERD_수정본.docx. 아래에서 “설명서 N절·그림 N”은 이 문서의 번호다.
 - 전달 순서 기준: service-message-flows.md 3.1~3.20. 이 파일의 15.1~15.20과 설명서의 1~20절이 같은 흐름에 대응한다.
 - 제품 정책 기준: spec-decision-log.md. 설계 제안서는 제품·구성의 보조 자료로 참고한다.
@@ -59,11 +59,11 @@ latest_records는 저장 순서상 최신 최대 3개이며, 각 항목에는 �
 ```json
 {
   "bucket": "capstone-artifacts",
-  "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/final/manifest.json"
+  "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/manifest.json"
 }
 ```
 
-허용된 버킷·prefix만 읽는다. 객체 key는 작업 또는 분석 revision별 불변 결과를 가리킨다. 메시지에 presigned URL이나 AWS 자격증명을 넣지 않는다. 최신 스냅샷 포인터를 payload의 참조로 사용하지 않는다. 최신 포인터가 바뀌어도 기존 작업은 원래 객체를 읽어야 한다.
+허용된 버킷·prefix만 읽는다. `snapshot_ref`는 채택된 실행 시도의 불변 `attempts/{attempt_id}/manifest.json`을 가리키며 `sample_ref`는 해당 분석 작업·revision·출처·시도의 불변 샘플 객체를 가리킨다. Control은 실제 참조를 보관하고 revision만으로 객체 위치를 추측하지 않는다. 메시지에 presigned URL이나 AWS 자격증명을 넣지 않는다. 최신 포인터가 바뀌어도 기존 작업은 원래 객체를 읽는다. 중간 결과·검증 샘플·스냅샷의 본문과 정리 조건은 [S3 저장 명세](s3-storage-contract.md)를 따른다.
 
 ### 1.4 오류 형식
 
@@ -80,7 +80,24 @@ latest_records는 저장 순서상 최신 최대 3개이며, 각 항목에는 �
 }
 ```
 
-error.code는 정형 코드, message는 사람에게 표시할 요약, details는 관찰 사실이다. 서비스가 관찰한 실패를 사이트 구조 변경으로 단정하지 않는다. 내부 예외·토큰·쿠키·접속 비밀값은 전달하지 않는다. retryable을 넣더라도 힌트일 뿐 Control의 재시도 정책을 대체하지 않는다.
+error.code는 정형 코드, message는 사람에게 표시할 요약, details는 관찰 사실이다. 필드 실패 원본이 확보된 Crawler·Ingestion 오류는 선택 배열 `failure_evidence`를 error 객체에 추가한다. 각 항목은 `project_source_id`, `field_id`, S3 `ref`와 `expires_at`을 담는다. 형식과 저장 순서는 S3 저장 명세 3.3절을 따른다. 원본이 없으면 생략하거나 빈 배열이며 원문은 메시지에 넣지 않는다. 같은 오류를 issue와 completed에 함께 넣을 때는 같은 참조를 사용한다. Control은 범위 검증 후 만료 전 조회·검증 정보 반영을 수행한다. 서비스가 관찰한 실패를 사이트 구조 변경으로 단정하지 않는다. 내부 예외·토큰·쿠키·접속 비밀값은 전달하지 않는다. retryable을 넣더라도 힌트일 뿐 Control의 재시도 정책을 대체하지 않는다.
+
+예를 들어 파싱 실패 원본이 있을 때 error 객체는 다음과 같다. 참조 경로와 본문 예시는 S3 저장 명세 3.3절의 동일한 객체다.
+
+```json
+{
+  "code": "PARSER_FAILED",
+  "stage": "TEMPORARY_EXTRACTION",
+  "message": "필드 변환에 실패했습니다.",
+  "details": {},
+  "failure_evidence": [{
+    "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+    "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+    "ref": {"bucket": "capstone-artifacts", "key": "failures/CRAWLER/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/43f5b110-f193-4157-91f2-1a16b8fb70d6/95f7d7de-ec00-4fbe-b430-fa3a79763c18/ba4f9e1e-ae8e-4a3c-9261-dca457848148/0.json"},
+    "expires_at": "2026-11-13T00:01:10Z"
+  }]
+}
+```
 
 ## 2 흐름별 메시지 계약의 구체화
 
@@ -287,6 +304,8 @@ LINK 상세는 selector·url_attribute, CLICK 상세는 selector·wait 조건과
 
 ### 5.3 수집 스냅샷 manifest
 
+이 본문은 [S3 저장 명세](s3-storage-contract.md) 4절의 수집 시도별 `manifest.json`에 저장한다. 아래 object_ref들은 manifest와 같은 수집 작업·실행 시도의 HTML 객체를 가리킨다.
+
 ```json
 {
   "format_version": 1,
@@ -302,7 +321,7 @@ LINK 상세는 selector·url_attribute, CLICK 상세는 selector·wait 조건과
       "access_method": "HTTP",
       "object_ref": {
         "bucket": "capstone-artifacts",
-        "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempt-1/list-0001.html"
+        "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/lists/list-0001.html"
       },
       "items": [
         {
@@ -314,26 +333,27 @@ LINK 상세는 selector·url_attribute, CLICK 상세는 selector·wait 조건과
               "url": "https://school.example/notices",
               "object_ref": {
                 "bucket": "capstone-artifacts",
-                "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempt-1/detail-0001.html"
+                "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/details/detail-0001.html"
               },
               "consumers": [
                 {
                   "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
                   "field_ids": [
-                    "ba4f9e1e-ae8e-4a3c-9261-dca457848148"
+                    "f1109132-a764-4415-a221-e0757bf0b112"
                   ]
                 }
               ]
             }
           ]
         }
-      ]
+      ],
+      "item_selector": ".notice-list .notice"
     }
   ]
 }
 ```
 
-상세 객체의 consumers는 해당 상세를 사용하는 project_source_id와 field_ids를 명시한다. Crawler는 필드별 동일한 상세 접근·이동·복귀 규칙을 작업 중 묶어 방문하고, 같은 객체를 여러 consumer에 연결한다. LINK는 정규화한 대상과 이동 조건, CLICK은 선택자·대기·복귀 조건 등 동작 전체가 같아야 묶는다. 목록 항목별로 구분하며 URL만 같은 클릭은 합치지 않는다. 영구 상세 규칙 ID는 없다. record_key는 이번 스냅샷 안의 목록–상세 연결용 식별자다. 외부 게시물 ID나 기존 데이터 매칭 키로 사용하지 않는다. 클릭형 상세는 URL이 목록과 같아도 object_ref와 연결 관계로 구분한다. sequence_index는 이번 수집의 전체 추출 순서를 나타내며 Ingestion 역순 저장에 사용한다. 무한 스크롤 누적 DOM에서는 같은 항목을 중복 열거하지 않도록 각 구간에서 새로 확보한 항목의 범위를 기록한다. 동일 항목을 판별하는 브라우저 구현은 별도 확인 필요다.
+이 manifest는 별도 DETAIL 필드 f1109132-a764-4415-a221-e0757bf0b112가 본문을 사용하는 예시이며 7.2의 LIST 제목 필드만 있는 축약 요청과 독립적이다. 상세 객체의 consumers는 해당 상세를 사용하는 project_source_id와 field_ids를 명시한다. Crawler는 필드별 동일한 상세 접근·이동·복귀 규칙을 작업 중 묶어 방문하고, 같은 객체를 여러 consumer에 연결한다. LINK는 정규화한 대상과 이동 조건, CLICK은 선택자·대기·복귀 조건 등 동작 전체가 같아야 묶는다. 목록 항목별로 구분하며 URL만 같은 클릭은 합치지 않는다. 영구 상세 규칙 ID는 없다. record_key는 이번 스냅샷 안의 목록–상세 연결용 식별자다. 외부 게시물 ID나 기존 데이터 매칭 키로 사용하지 않는다. 클릭형 상세는 URL이 목록과 같아도 object_ref와 연결 관계로 구분한다. `item_selector`는 Crawler가 그 목록 DOM에서 항목을 찾는 데 사용한 CSS이며, Ingestion은 같은 DOM에 그 선택자를 적용한 순서에서 0부터 시작하는 item_index를 사용한다. 스크롤 묶음 내부 번호로 해석하지 않는다. sequence_index는 이번 수집의 전체 추출 순서를 나타내며 Ingestion 역순 저장에 사용한다. 무한 스크롤 누적 DOM에서는 같은 항목을 중복 열거하지 않도록 각 구간에서 새로 확보한 항목의 범위를 기록한다. 동일 항목을 판별하는 브라우저 구현은 별도 확인 필요다.
 
 ## 6 분석 요청과 결과
 
@@ -358,19 +378,36 @@ Control → Analysis. 초기 분석부터 공동 추천까지 한 작업으로 �
   ],
   "current_candidate": null,
   "recovery_baselines": [],
-  "failure_context": null
+  "failure_context": null,
+  "intermediate_refs": []
 }
 ```
 
 | purpose | 필수 입력과 처리 |
 |---|---|
 | INITIAL | sources, collection_purpose. 성공한 출처의 결과를 모아 공동 후보 생성 |
-| RETRY_SOURCE | 대상 sources, 현재 공동 후보, 기준 revision. 사용자 수정은 보존하고 해당 출처의 매핑·샘플을 제안 |
+| RETRY_SOURCE | 대상 sources, 현재 공동 후보, 기준 revision, 기존 유효 출처별 intermediate_refs. 사용자 수정은 보존하고 해당 출처의 매핑·샘플을 제안 |
 | ADD_SOURCE | 대상 sources, 현재 승인 스키마·후보. 기존 스키마에 맞춰 매핑하며 임의로 스키마를 확장하지 않음 |
 | REVALIDATE | 현재 수정 후보와 영향 출처, revision. 실행·샘플·HTTP 확인 후 결과 반환 |
 | REPAIR_NAVIGATION | 현재 스키마·공유 이동 설정, 영향 프로젝트의 비교 기준, 실패 정보 |
 | REPAIR_CONNECTOR | 현재 스키마·대상 커넥터, 비교 기준, 실패 정보 |
 | RECHECK_SOURCE | 운영 중 0건 출처의 재확인. 해당 프로젝트·출처와 현재 승인 설정을 전달 |
+
+`intermediate_refs`는 재시도 시 Control이 저장한 기존 성공 출처의 불변 중간 결과 참조다. INITIAL 등 참고할 기존 결과가 없는 요청은 빈 배열이다. 각 항목은 `project_source_id`, `intermediate_ref`(`bucket`, `key`)로 구성되며 기존 후보·기준 revision과 함께 전달한다. Analysis는 참조 대상의 analysis_id·project_source_id·형식 및 사용 권한을 검증한다. 참조가 없거나 삭제·조회 실패한 경우 공동 추천을 성공으로 가장하지 않고 해당 출처 재분석 또는 확인 필요로 처리한다. 아래 예시는 실제 RETRY_SOURCE 요청에 추가되는 형태다.
+
+```json
+{
+  "intermediate_refs": [
+    {
+      "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+      "intermediate_ref": {
+        "bucket": "capstone-artifacts",
+        "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+      }
+    }
+  ]
+}
+```
 
 현재 후보의 전체 형식은 다음과 같다. 기존 스키마에 맞춰야 하는 ADD_SOURCE에서도 같은 형태를 쓰되 schema.fields를 유지한다.
 
@@ -423,9 +460,22 @@ Control → Analysis. 초기 분석부터 공동 추천까지 한 작업으로 �
       ]
     }
   ],
-  "excluded_project_source_ids": []
+  "excluded_project_source_ids": [],
+  "candidate_mappings": [
+    {
+      "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+      "intermediate_ref": {
+        "bucket": "capstone-artifacts",
+        "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+      },
+      "candidate_key": "candidate-1",
+      "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148"
+    }
+  ]
 }
 ```
+
+INITIAL·RETRY_SOURCE 공동 추천에서 Analysis는 분석 중간 결과의 `(intermediate_ref, candidate_key) → field_id` 매핑을 후보의 `candidate_mappings`에 보관하고 결과 candidate에 함께 반환한다. 다음 재시도는 current_candidate로 전달한다. 매핑 키는 중간 파일 내부에서만 고유하므로 참조와 함께 식별하며, 기존 사용자 수정과 현재 revision을 우선한다. 재분석으로 참조가 바뀌면 새 후보와 명시적으로 다시 매핑하고 불명확한 경우 자동으로 덮어쓰지 않는다. ADD_SOURCE·REVALIDATE 등 중간 결과가 필요 없는 경우 이 배열은 비워도 된다. 이 정보는 분석 후보용이며 운영 커넥터의 필수 항목이 아니다.
 
 revision은 Control이 예약한 현재 후보 버전이다. Analysis는 revision을 독자적으로 증가시키거나 Control의 사용자 수정 전체를 덮어쓰지 않는다. RETRY_SOURCE 결과의 매핑을 적용할 때 현재 revision이 달라졌으면 자동 반영하지 않고 최신 후보 기준의 새 작업으로 재검증한다. 변경된 필드 매핑·그룹은 candidate.schema.fields와 source_configs에 반영되며 제외 출처는 excluded_project_source_ids로 보존한다.
 
@@ -454,11 +504,35 @@ revision은 Control이 예약한 현재 후보 버전이다. Analysis는 revisio
       }
     }
   ],
-  "approved_sample_ref": null
+  "approved_sample_ref": null,
+  "schema": {
+    "fields": [
+      {
+        "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+        "api_name": "title",
+        "display_name": "제목",
+        "type": "string",
+        "nullable": true
+      }
+    ]
+  },
+  "field_connectors": [
+    {
+      "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+      "location": "LIST",
+      "detail_navigation": null,
+      "selector": ".notice-title",
+      "extract": {
+        "type": "TEXT",
+        "attribute": null
+      },
+      "parser": null
+    }
+  ]
 }
 ```
 
-DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘플을 넣는다. 조회 실패를 []로 바꾸지 않는다. 기준이 모두 없으면 자동 복구 성공으로 처리하지 않는다. 공유 이동 규칙 복구에서는 영향 프로젝트 전부의 기준을 전달한다. 이때 각 recovery_baselines 항목에 해당 프로젝트의 schema와 field_connectors도 함께 넣어야 한다. 최신값만 있고 프로젝트별 추출 설정이 없으면 전체 영향 프로젝트를 검증할 수 없다. 프로젝트 범위가 아닌 공유 출처 복구의 최상위 project_id는 null을 허용하고, 실제 대상은 recovery_baselines 항목들로 특정한다. 1~2건·샘플 부족의 자동 복구 통과 기준은 기존 미정 사항이며 이 계약이 임의로 확정하지 않는다.
+DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘플을 넣는다. 조회 실패를 []로 바꾸지 않는다. 기준이 모두 없으면 자동 복구 성공으로 처리하지 않는다. 공유 이동 규칙 복구에서는 영향 프로젝트 전부의 기준을 전달한다. 이때 각 recovery_baselines 항목에 해당 프로젝트의 schema와 field_connectors도 함께 넣어야 한다. 최신값만 있고 프로젝트별 추출 설정이 없으면 전체 영향 프로젝트를 검증할 수 없다. 프로젝트 범위가 아닌 공유 출처 복구의 최상위 project_id는 null을 허용하고, 실제 대상은 recovery_baselines 항목들로 특정한다. 자동 복구에서 DB 기준이 3건 이상이면 최신 3건, 1~2건이면 존재하는 데이터를 모두 비교하며 모두 일치해야 한다. DB 0건은 승인 샘플을 사용한다. 승인 샘플이 부족한 경우의 통과 기준과 복구 재시도 횟수는 별도 미정이다.
 
 ### 6.2 analysis.completed
 
@@ -518,7 +592,18 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
         ]
       }
     ],
-    "excluded_project_source_ids": []
+    "excluded_project_source_ids": [],
+    "candidate_mappings": [
+      {
+        "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+        "intermediate_ref": {
+          "bucket": "capstone-artifacts",
+          "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+        },
+        "candidate_key": "candidate-1",
+        "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148"
+      }
+    ]
   },
   "source_results": [
     {
@@ -527,16 +612,20 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
       "validation_status": "PASSED",
       "sample_ref": {
         "bucket": "capstone-artifacts",
-        "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/revision-1/95f7d7de-ec00-4fbe-b430-fa3a79763c18/sample.json"
+        "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/revisions/1/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/sample.json"
       },
-      "error": null
+      "error": null,
+      "intermediate_ref": {
+        "bucket": "capstone-artifacts",
+        "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+      }
     }
   ],
   "error": null
 }
 ```
 
-status는 SUCCEEDED, PARTIAL, FAILED, SKIPPED다. 초기 일부 출처 실패는 PARTIAL과 source_results에 남기고 성공 출처의 후보를 제공한다. validation_status는 PASSED, FAILED, UNVERIFIABLE이다. 스키마 변경이 필요한 복구는 schema_change_required=true로 반환하고 자동 승인하지 않는다. 샘플 저장 실패면 PASSED로 반환하지 않는다. 정적 수집 가능 여부는 navigation의 각 access에 반영하며 사용자에게 별도의 HTTP 검사 화면을 요구하지 않는다.
+status는 SUCCEEDED, PARTIAL, FAILED, SKIPPED다. 최초 분석 또는 출처 재시도에서 성공한 출처는 `source_results[].intermediate_ref`로 채택된 중간 JSON의 실제 참조를 전달한다. 다른 목적이거나 중간 결과가 없는 출처는 이 값을 null로 둔다. Control은 반환 revision이 현재 후보에 유효할 때만 출처별 참조를 저장하고 RETRY_SOURCE에 기존 유효 참조를 전달한다. 출처별 sample_ref가 가리키는 샘플 본문은 [S3 저장 명세](s3-storage-contract.md) 3절의 revision·프로젝트·출처별 JSON이다. Control은 성공적으로 저장된 실제 sample_ref와 sample_revision을 유효한 현재 검증에 연결하며 사용자 승인 후에는 그 참조를 복구 기준으로 보관한다. 실패 검증도 샘플 저장에 성공했다면 실패 결과의 sample_ref를 읽어 match_count와 7일 만료되는 failure_raw_ref를 확인할 수 있다. 재검증이 불필요한 후보 수정의 승계는 11절을 따른다. 초기 일부 출처 실패는 PARTIAL과 source_results에 남기고 성공 출처의 후보를 제공한다. validation_status는 PASSED, FAILED, UNVERIFIABLE이다. 스키마 변경이 필요한 복구는 schema_change_required=true로 반환하고 자동 승인하지 않는다. 샘플 저장 실패면 PASSED로 반환하지 않는다. 정적 수집 가능 여부는 navigation의 각 access에 반영하며 사용자에게 별도의 HTTP 검사 화면을 요구하지 않는다.
 
 ## 7 수집 요청과 결과
 
@@ -724,7 +813,7 @@ execution_reason은 INITIAL, SCHEDULED, MANUAL, REVISION, RECOVERY다. collectio
   "list_item_count": 40,
   "snapshot_ref": {
     "bucket": "capstone-artifacts",
-    "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/final/manifest.json"
+    "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/manifest.json"
   },
   "project_results": [
     {
@@ -759,7 +848,7 @@ stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLO
   "change_job_id": null,
   "snapshot_ref": {
     "bucket": "capstone-artifacts",
-    "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/final/manifest.json"
+    "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/manifest.json"
   },
   "schema": {
     "fields": [
@@ -803,7 +892,7 @@ APPEND는 기존 사용자 필드값과 비교해 신규만 역순 저장한다.
   "schema_version": 1,
   "connector_revision": 2,
   "change_job_id": "20549fac-0901-42bd-be1d-4acad93965bc",
-  "snapshot_ref": {"bucket": "capstone-artifacts", "key": "collections/example/final/manifest.json"},
+  "snapshot_ref": {"bucket": "capstone-artifacts", "key": "collections/6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc/attempts/43f5b110-f193-4157-91f2-1a16b8fb70d6/manifest.json"},
   "schema": {"fields": [{"field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148", "api_name": "title", "display_name": "제목", "type": "string", "nullable": true}]},
   "field_connectors": [{"field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148", "location": "LIST", "detail_navigation": null, "selector": ".notice-title", "extract": {"type": "TEXT", "attribute": null}, "parser": null}]
 }
@@ -991,14 +1080,14 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 
 1. Control은 출처별 활성 논리 작업을 DB에서 원자적으로 생성한다. 같은 출처의 다음 작업은 필요한 적재 종료까지 기다린다. 실패한 자식 작업도 종료로 집계하고 확인 필요 대상의 이후 실행 여부는 기존 정책으로 결정한다.
 2. 같은 job_id의 중복 실행은 드물게 발생할 수 있다. Crawler는 SQS visibility를 실행 시간에 맞춰 연장하고, 실행마다 S3 경로를 분리한다. 결과 채택은 한 번이며 스냅샷 덮어쓰기는 허용하지 않는다.
-3. Analysis·Crawler는 작업별 final result manifest에 결과 payload와 event_id를 함께 확정한다. 동일 작업의 최종 결과는 S3 조건부 쓰기 등으로 하나만 채택한다. 성공·실패 결과도 같은 확정 지점을 사용한다. 전송 전에 중단되면 재전달 작업이 확정된 결과를 다시 보낸다. S3 장애로 결과 확정도 못하면 메시지를 성공 삭제하지 않고 재처리·최종 DLQ/기한 처리를 따른다.
-4. 단순히 final manifest가 있다는 이유로 요청을 완료 삭제하지 않는다. 결과를 SQS에 성공 발행한 뒤 요청을 삭제한다. 성공 발행 후 삭제 전에 죽으면 결과 중복이 생기며 Control이 안전하게 소비한다.
+3. Analysis·Crawler는 작업별 `final/result.json`에 3.2의 완전한 결과 이벤트 envelope와 payload를 함께 확정한다. 구체적인 두 서비스의 경로와 시도별 객체 정리는 [S3 저장 명세](s3-storage-contract.md) 1절을 따른다. Crawler 결과의 `snapshot_ref`는 채택된 시도의 manifest를 가리킨다. 동일 작업의 최종 결과는 S3 조건부 쓰기 등으로 하나만 채택한다. 성공·실패 결과도 같은 확정 지점을 사용한다. 전송 전에 중단되면 재전달 작업이 확정된 결과를 다시 보낸다. S3 장애로 결과 확정도 못하면 메시지를 성공 삭제하지 않고 재처리·최종 DLQ/기한 처리를 따른다.
+4. 단순히 `final/result.json`이 있다는 이유로 요청을 완료 삭제하지 않는다. 결과를 SQS에 성공 발행한 뒤 요청을 삭제한다. 성공 발행 후 삭제 전에 죽으면 결과 중복이 생기며 Control이 안전하게 소비한다.
 5. Ingestion은 작업별 완료 기록·레코드 변경·결과 Outbox를 같은 트랜잭션에 남긴다. 먼저 처리 여부를 조회하는 것만으로 중복 방지를 구현하지 않고 DB 고유 제약과 쓰기 직렬화를 사용한다.
-6. Control은 수신 event_id 처리 기록·상태 변경·후속 작업/Outbox 생성을 같은 트랜잭션으로 수행한다. 성공한 수집 결과 하나로 동일 적재 작업을 두 번 만들지 않는다.
-7. 후보 수정·분석 결과 반영·승인 검사는 현재 revision을 조건으로 한 DB 갱신으로 수행한다. 두 요청이 같은 revision을 읽더라도 하나만 수정에 성공하게 한다. 별도 검증 중 플래그가 없어도 검증 결과와 현재 revision의 일치가 필요하다.
+6. Control은 수신 event_id 처리 기록·상태 변경·출처별 유효 intermediate_ref와 sample_ref·후속 작업/Outbox 생성을 같은 트랜잭션으로 수행한다. 성공한 수집 결과 하나로 동일 적재 작업을 두 번 만들지 않는다.
+7. 후보 수정·분석 결과 반영·승인 검사는 현재 revision을 조건으로 한 DB 갱신으로 수행한다. 재검증이 불필요한 변경은 출처별 현재 후보에 대한 검증 revision을 새 값으로 승계하되 불변 sample_ref와 샘플을 생성한 sample_revision은 기존 값을 보존한다. 승계는 필드·매핑·이동·추출·파싱과 샘플 해석에 영향이 없고 유효한 기존 검증인 경우에만 허용한다. 승인에서는 현재 후보 revision과 유효 검증 revision이 같은지 검사하고, sample_ref의 생성 revision이 다르면 이 승계 근거와 소유 범위를 검증한다. 두 요청이 같은 revision을 읽더라도 하나만 수정에 성공하게 한다. 별도 검증 중 플래그가 없어도 검증 결과와 현재 revision의 일치가 필요하다.
 8. 예상한 자식 작업 목록을 먼저 기록하고 해당 목록의 종료 결과를 집계한다. 수신한 성공 이벤트 수만 세면 중복 이벤트가 준비 출처 수를 부풀릴 수 있다.
 9. 확정된 결과가 있는 작업의 재전달은 기한과 관계없이 기존 결과를 재발행한다. 확정 결과가 없는 미실행 요청이 expires_at을 넘었으면 새로 실행하지 않고 SKIPPED 결과를 전달한다. Control이 이미 종료·대체한 작업의 결과는 현재 상태에 적용하지 않는다. 늦은 실패로 새 정상 상태를 되돌리지 않는다.
-10. 임시 네트워크 재시도는 기존 최대 2회·2초/5초 정책을 따른다. SQS 재전달·DLQ 횟수와는 다른 계층이다. 규칙 실패를 메시지 수신마다 무한 자동 복구하지 않고 Control이 복구 작업을 명시적으로 생성한다. SQS 기술 재전달 한도·작업 종료 기한의 구체 숫자는 별도 설정이다.
+10. 사이트의 일시 네트워크 오류는 기존 최대 2회·2초/5초 재시도를 마치기 전 최종 FAILED로 확정하지 않는다. S3·SQS 등 인프라 기술 오류로 결과를 확정하거나 발행하지 못하면 요청을 성공 삭제하지 않고 재전달·기한·DLQ 처리를 따른다. 정상적으로 내부 재시도를 끝낸 후 실패와 성공이 중복 실행 사이에서 경합하면 먼저 확정된 결과를 유지하며 필요 시 Control이 새 job_id의 후속 작업을 생성한다. SQS 재전달·DLQ 횟수와는 다른 계층이다. 규칙 실패를 메시지 수신마다 무한 자동 복구하지 않고 Control이 복구 작업을 명시적으로 생성한다. SQS 기술 재전달 한도·작업 종료 기한의 구체 숫자는 별도 설정이다.
 11. DLQ 소비 또는 Control의 기한 점검으로 작업을 실패·확인 필요로 종료한다. 단순히 실패 상태를 기록했다고 실제 실행이 즉시 멈추는 것은 아니며, 늦게 끝난 실행의 결과·쓰기도 기존 작업/버전 검사로 차단한다. DLQ를 처리할 소비 구현을 누가 담당할지는 별도 운영 계약이다.
 12. 스냅샷은 참조하는 적재·재처리 작업 종료 전에는 삭제하지 않는다. 최신 한 세트 정책에도 진행 중 참조 객체는 예외 보관한다. 부분 성공 프로젝트의 적재는 계속 진행하되 전체 준비가 필요한 변경은 적용하지 않는다.
 13. source_id가 달라도 같은 도메인일 수 있다. 기존의 도메인별 동시 요청 1개·최소 1초 간격은 출처별 활성 작업 제약과 별도로 조정해야 한다. 다중 Crawler에서는 개별 프로세스의 sleep만으로 보장되지 않는다. 기존 Redis를 이용한 도메인별 실행 조정 또는 같은 도메인을 한 실행 주체에 배정하는 방식 중 실제 배포 방식에 맞춰 확정한다. 드문 동일 메시지 중복 실행까지 엄격하게 사이트 요청 동시성을 보장하려면 이 실행 조정도 필요하므로, 중복 실행 비용을 허용한다는 합의가 절대적인 동시 요청 금지까지 보장한다는 뜻은 아니다.
@@ -1067,7 +1156,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 2. 생성 코드의 JDK·허용 의존성·입출력 ABI·시간/메모리/출력 제한. 함수 코드 편집을 사용자에게 노출할지는 현재 범위에 추가하지 않는다.
 3. nullable 추출·변환 실패가 있는 레코드의 부분 저장과 normal_extracted_record_count 기준.
 4. 목록 끝·이동 실패·무한 스크롤 새 항목 식별의 실제 판정, 반복된 동일 최신값의 일치 계산.
-5. 복구 기준 1~2건·승인 샘플 부족·일부 영향 프로젝트 검증 실패의 처리.
+5. 승인 샘플 부족 시 통과 기준과 복구 재시도 횟수. DB 1~2건은 존재하는 데이터 모두를 비교하고 모두 일치해야 한다.
 6. Ingestion의 활성 공개 스키마·데이터 포인터 권위와 Data 캐시 무효화. Control과 Ingestion DB를 한 번에 원자 갱신하는 방식으로 구현하지 않는다.
 7. 비활성 출처·프로젝트 쓰기 차단 상태의 보관 기간, 15~16절에 제안한 계정 정리 HTTP 경로·탈퇴 중 인증 차단 방식.
 8. DLQ 처리 주체·기술 재전달 한도·작업 기한·리비전/복구 작업 큐 우선순위.
@@ -1155,7 +1244,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 | 9 | Analysis ↔ S3·LLM | 객체 조회·외부 API | 출처별 중간 결과 | 공통 스키마 추천. Control에 별도 공동 추천 요청을 요구하지 않음 |
 | 10 | Analysis ↔ 사이트 | 브라우저·HTTP 검증 | 공통 후보와 출처별 규칙 | 실제 이동·추출 검증 및 목록/상세별 HTTP 가능 여부 내부 확인 |
 | 11 | Analysis → S3 | 객체 저장 | analysis_id·revision·출처별 검증 샘플 | 저장 성공 후에만 승인 가능한 성공 결과 생성 |
-| 12 | Analysis → Control | SQS analysis.completed | revision, candidate, source_results, sample_ref | 현재 분석·revision 대조 후 후보와 상태 저장 |
+| 12 | Analysis → Control | SQS analysis.completed | revision, candidate, source_results, sample_ref, intermediate_ref | 현재 분석·revision 대조 후 후보와 출처별 참조·상태 저장 |
 | 13 | 웹 ↔ Control | HTTP GET /control/v1/projects/{p}/analyses/{a} | analysis_id | 진행 상태·후보·출처별 오류 조회 |
 | 14 | Control ↔ S3 | 객체 조회·응답 | 현재 revision의 sample_ref | 분석 조회 응답에 샘플 포함 |
 | 15a | Control → 웹 | HTTP 조회 응답 | status=SUCCEEDED 또는 PARTIAL | 성공 출처 후보와 실패 출처를 함께 표시. 수정·승인 또는 15.2 연결 |
@@ -1170,7 +1259,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 |---|---|---|---|---|
 | 1 | 웹 → Control | HTTP POST /control/v1/projects/{p}/analyses/{a}/sources/{s}/retry | 대상 project_source_id | 현재 후보·revision 확인. 새 재시도 작업 생성 |
 | 2 | Control → 웹 | HTTP 202 | job_id | 작업·분석 조회로 상태 확인 |
-| 3 | Control → Analysis | SQS analysis.execute | purpose=RETRY_SOURCE, current_candidate, sources, revision | 해당 출처만 재분석하고 현재 공동 후보에 맞춘 매핑·검증 수행 |
+| 3 | Control → Analysis | SQS analysis.execute | purpose=RETRY_SOURCE, current_candidate, sources, revision, intermediate_refs | 기존 출처별 참조와 해당 출처 재분석으로 현재 공동 후보에 맞춰 매핑·검증 |
 | 4 | Analysis ↔ 사이트·LLM·S3 | 브라우저·외부 API·객체 저장 | 해당 출처·공동 후보·새 샘플 | 기존 사용자 수정 보존. Analysis 내부에서 공동 후보 반영안을 구성 |
 | 5a | Analysis → Control | SQS analysis.completed | status=SUCCEEDED, candidate, source_results, revision | 현재 revision과 일치하면 대상 출처의 결과만 반영 |
 | 5b | Analysis → Control | SQS analysis.completed | status=FAILED, source_results[].error | 실패 상태 유지. 사용자는 재시도 또는 제외 가능 |
@@ -1188,7 +1277,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 |---|---|---|---|---|
 | 1 | 웹 → Control | HTTP PATCH /control/v1/projects/{p}/analyses/{a}/candidate | expected_revision, fields, source_rules, excluded_project_source_ids | 조건부 DB 갱신으로 revision 증가. 동시 수정 충돌은 409 |
 | 2a | Control → Analysis | SQS analysis.execute | purpose=REVALIDATE, 현재 후보, 영향 출처, 새 revision | 이동·추출·파싱·타입·HTTP 가능 여부를 검증 |
-| 2b | Control 내부 | 검증 승계 | 재검증이 불필요한 변경 | 새 revision에 유효한 기존 검증을 승계. Analysis 메시지 없음 |
+| 2b | Control 내부 | 검증 승계 | 재검증이 불필요한 변경 | 새 후보에 기존 검증을 승계하고 sample_revision·sample_ref와 승계 근거 유지. Analysis 메시지 없음 |
 | 3 | Analysis → S3 | 객체 저장 | 새 revision의 검증 샘플 | 이전 샘플과 구분. 저장 실패는 검증 성공으로 반영하지 않음 |
 | 4 | Analysis → Control | SQS analysis.completed | 목표 revision, validation_status, source_results | 현재 revision 일치 시에만 검증 결과 반영 |
 | 5 | 웹 ↔ Control·S3 | HTTP 분석 조회 / Control의 S3 조회 | 현재 후보·샘플·출처별 실패 | 사용자에게 수정 결과 표시 |
@@ -1432,8 +1521,8 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 | 4 | Control → Ingestion | SQS project-data.delete [제안] | project_id | 활성 데이터·비활성 준비 데이터·관련 데이터 메타데이터 전체 정리 |
 | 5a | Ingestion → Control | SQS project-data.deleted | status=SUCCEEDED, project_id | Control이 프로젝트 설정·키·출처 연결·분석 후보 정리 조정 |
 | 5b | Ingestion → Control | SQS project-data.deleted | status=FAILED, error | 삭제 완료로 표시하지 않음. 기술 재처리·최종 실패 안내. 대상 프로젝트는 삭제 중 상태 유지 |
-| 6 | Control → Redis·S3·Scheduler | 캐시 무효화·객체/일정 정리 | 프로젝트 키·샘플 및 연결이 사라진 공유 출처 | 공유 출처는 다른 프로젝트 연결이 있으면 유지. 참조 중 객체는 작업 종료 후 정리 |
-| 7 | 웹 ↔ Control | HTTP 작업 조회 | 삭제 작업 job_id | 전체 필수 정리가 끝나면 완료. 삭제된 프로젝트 자체 조회와 별개로 작업 결과 확인 경로 필요 |
+| 6 | Control → Redis·S3·Scheduler | 캐시 무효화·객체/일정 정리 | 프로젝트 전용 객체·공유 결과·큐 재처리 기간 | 다른 프로젝트는 유지하고 필요 시 공유 manifest에서 삭제 대상만 제외한 새 참조로 전환. 이전 불변 결과·메시지의 재처리 종료 후 정리 |
+| 7 | 웹 ↔ Control | HTTP 작업 조회 | 삭제 작업 job_id | 전용 객체와 공유 결과·대기/DLQ 메시지 정리를 포함한 전체 필수 정리가 끝나면 완료. 큐 보존 기간만큼 지연될 수 있음 |
 
 ### 15.17 회원 탈퇴와 소유 프로젝트 정리
 
@@ -1608,14 +1697,15 @@ HTTP 200 응답:
         "stage": "ANALYSIS_NAVIGATION",
         "message": "다음 목록 이동 후보를 검증하지 못했습니다.",
         "details": {}
-      }
+      },
+      "intermediate_ref": null
     }
   ],
   "error": null
 }
 ```
 
-최상위 error는 작업 전체를 수행할 수 없을 때 사용한다. 출처별 실패만 명확하면 source_results[].error로 원인을 표현한다. PARTIAL도 동일한 결과 형식이며 성공·실패한 출처를 각각 담는다. source_results의 성공 항목 수를 전체 출처 수로 오인하지 않는다.
+최상위 error는 작업 전체를 수행할 수 없을 때 사용한다. 출처별 실패만 명확하면 source_results[].error로 원인을 표현한다. PARTIAL도 동일한 결과 형식이며 성공·실패한 출처를 각각 담는다. 실패 시 검증 샘플 저장에 성공했다면 FAILED 출처도 sample_ref를 전달할 수 있다. Control은 sample_ref에서 match_count와 failure_raw_ref를 확인하여 샘플·실패 원본 정보를 조회하고 처리한다. 샘플이 생성되지 않는 탐색 실패는 sample_ref=null로 표현할 수 있다. 필수 샘플·sidecar의 S3 저장 장애는 정상 FAILED 결과로 확정하지 않고 SQS 재전달·기한·DLQ에 따라 기술 실패로 처리한다. 이미 저장된 참조 없는 sidecar는 7일 내 정리한다. source_results의 성공 항목 수를 전체 출처 수로 오인하지 않는다.
 
 Ingestion 실패 예시:
 
@@ -1802,7 +1892,7 @@ Control은 같은 owner_id의 진행 중·완료된 탈퇴 정리 요청을 중�
 ### 17.2 전송 상황은 포함했지만 최종 결정되지 않은 부분
 
 1. Java 실행 환경·격리·같은 파싱 코드의 Python/Java 실행 방식. 이번 작업에서 새로운 파서 런타임을 구현한 것은 아니다.
-2. 공유 복구의 1~2건·샘플 부족 판정, nullable 일부 추출 실패 레코드의 저장 기준, 실패 탐지 임계값. 기존의 미확정 기준을 새로 확정하지 않았다.
+2. 승인 샘플 부족 판정과 복구 재시도 횟수. DB 1~2건은 모두 비교·일치하는 것으로 결정했다. 필드 실패 레코드 저장과 복구 감지의 최근 대화 결정은 관련 스펙에 반영할 별도 작업이다.
 3. 16.5 계정 정리 내부 HTTP 경로, 탈퇴 후 기발급 JWT 차단, 삭제된 프로젝트의 작업 조회 권한·보관 정책.
 4. API 키 즉시 폐기와 버전 전환의 Data 캐시 무효화 경로. 필요 전송 상황은 15.18에 표시했으며 임의의 새 큐·이벤트를 추가하지 않았다.
 5. 이메일 공급자·발송 재시도·인증번호 유효 기간·횟수. 인증·문제 이메일의 발송 상황은 모두 포함했으나 공급자 API body는 미정이다.

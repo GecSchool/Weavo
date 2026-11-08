@@ -201,6 +201,8 @@ erDiagram
         uuid project_source_id FK
         string validation_status
         string sample_reference "nullable"
+        int sample_revision "nullable; 생성된 revision"
+        string inheritance_reason "nullable"
     }
     JOB {
         uuid job_id PK
@@ -229,7 +231,7 @@ erDiagram
 | --- | --- |
 | `ANALYSIS` | 초기·스키마 수정·출처 추가 등의 분석 단위를 식별하고 현재 후보 revision과 상태를 관리한다. `analysis_id`와 개별 작업 `job_id`는 다르다. 공유 출처 복구는 source_id와 프로젝트별 검증 대상을 사용한다. |
 | 분석 후보 | 현재 후보를 `ANALYSIS`에 보관한다. revision별 전체 이력은 전제하지 않으며 사용자 수정과 검증 상태를 원자적으로 관리한다. |
-| `SOURCE_VALIDATION` | 어느 후보 revision을 어느 출처에서 검증했는지, 통과 여부와 S3 샘플 참조를 표현한다. 샘플 원문은 S3에 있다. 별도 `validation_id`는 전제하지 않는다. |
+| `SOURCE_VALIDATION` | 어느 후보 revision을 어느 출처에서 검증했는지, 통과 여부와 S3 샘플 참조·생성 revision·승계 근거를 표현한다. 분석의 출처별 중간 결과 참조는 후보 메타데이터에 보관한다. 샘플 원문은 S3에 있다. 별도 `validation_id`는 전제하지 않는다. |
 | `JOB_PROJECT_RESULT` | `(job_id, project_source_id)` 기준 프로젝트 출처별 결과. 수집과 적재는 각 단계의 별도 job_id로 구분한다. |
 | `JOB` | 분석·수집·적재·준비·삭제 등 Control의 작업 원장. 공유 출처 작업은 project_id 없이 source_id를 가질 수 있고, project 작업은 source_id 없이 존재할 수 있다. 부모 작업과 자식 작업을 구분한다. |
 | `OUTBOX` | 업무 상태와 함께 트랜잭션으로 기록한 뒤 SQS로 발행할 메시지. 내부 구현 세부는 제안이며 메시지별 송신처와 재발행 규칙을 반영해야 한다. |
