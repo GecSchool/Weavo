@@ -1,0 +1,7 @@
+{
+  "description": "Weavo 변경 영역별 코드 컨벤션 검토",
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/convention-review.cjs\" snapshot", "timeout": 20}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/convention-review.cjs\" review", "timeout": 20}]}]
+  }
+}

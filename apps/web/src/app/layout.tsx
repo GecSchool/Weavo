@@ -7,10 +7,16 @@ export const metadata: Metadata = {
   description: "웹 데이터 통합 및 API 자동 생성 플랫폼",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="ko">
-      <body><QueryProvider>{children}</QueryProvider></body>
+      <body>
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }

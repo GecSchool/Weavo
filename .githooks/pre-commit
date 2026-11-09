@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+git diff --cached --check
+# Check the same content that is staged, avoiding misleading partial-staging results.
+changed=$(git diff --cached --name-only --diff-filter=ACMR)
+web=false
+for file in $changed; do
+  case "$file" in
+    apps/web/*.ts|apps/web/*.tsx|apps/web/*.js|apps/web/*.mjs|apps/web/*.css|services/auth/*.java|services/control/*.java|services/data/*.java|services/ingestion/*.java)
+      if ! git diff --quiet -- "$file"; then
+        printf '부분 스테이징된 파일을 모두 스테이징하거나 나눠 커밋하세요: %s\n' "$file" >&2; exit 1
+      fi ;;
+  esac
+  case "$file" in apps/web/*.ts|apps/web/*.tsx|apps/web/*.js|apps/web/*.mjs|apps/web/*.css) web=true ;; esac
+done
+if [ "$web" = true ]; then
+  printf '%s\n' '프론트 ESLint 검사 중...'
+  (cd apps/web && npm run format:check && npm run lint -- --max-warnings=0)
+fi
+for service in auth control data ingestion; do
+  if printf '%s\n' "$changed" | grep -Eq "^services/$service/.*\\.java$"; then
+    printf '%s\n' "$service Spotless 검사 중..."
+    (cd "services/$service" && ./gradlew --no-daemon spotlessCheck)
+  fi
+done

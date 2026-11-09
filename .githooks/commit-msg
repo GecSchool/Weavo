@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+first_line=$(head -n 1 "$1")
+if ! printf '%s\n' "$first_line" | grep -Eq '^(feat|fix|refactor|test|docs|chore)(\([[:alnum:]_.-]+\))?: .+|^(Merge |Revert |fixup! |squash! )'; then
+  printf '%s\n' '커밋 메시지는 예: feat: 프로젝트 생성 (허용: feat, fix, refactor, test, docs, chore)' >&2
+  exit 1
+fi

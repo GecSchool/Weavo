@@ -9,6 +9,14 @@
   --radius: 0.5rem;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; color: var(--color-text); font-family: Arial, sans-serif; }
-a { color: #2459a6; }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  color: var(--color-text);
+  font-family: Arial, sans-serif;
+}
+a {
+  color: #2459a6;
+}
