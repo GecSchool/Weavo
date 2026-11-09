@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ProjectList } from "@/features/projects/components/ProjectList";
-import styles from "./page.module.css";
+
+const styles = {
+  page: "[max-width:var(--size-example-page-max-width)] my-example-xl mx-auto py-0 px-example-md",
+};
 
 export default function ExamplePage() {
   return (

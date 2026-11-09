@@ -22,12 +22,10 @@ src/
 │   ├── globals.css                   # 전역 스타일과 공통 토큰
 │   └── example/
 │       ├── page.tsx                  # 예시 페이지 (Server Component)
-│       └── page.module.css
 ├── features/                         # 도메인별 기능
 │   └── projects/
 │       ├── components/               # 프로젝트 화면 요소와 테스트
 │       │   ├── ProjectList.tsx
-│       │   ├── ProjectList.module.css
 │       │   └── ProjectList.test.tsx
 │       ├── model/                    # 훅, TanStack Query, 검증·변환
 │       │   ├── useExampleProjects.ts
@@ -50,7 +48,7 @@ src/
 - `features` 하위 폴더는 필요할 때 만듭니다. `shared`의 같은 이름의 폴더에는 도메인에 종속되지 않는 공통 코드를 둡니다. 현재 `providers` 외 공통 폴더는 빈 자리입니다.
 - `page.tsx`는 기본적으로 Server Component로 두고, 상태와 상호작용이 필요한 컴포넌트에만 `use client`를 붙입니다.
 - 예시의 `services`는 샘플 데이터만 반환합니다. 실제 API를 연결할 때 HTTP 상태·응답 형태 검증과 로딩·빈 결과·오류 처리를 구현합니다.
-- 컴포넌트 파일과 타입은 PascalCase, 함수와 변수는 camelCase, 테스트 파일은 `대상명.test.tsx`를 사용합니다. 스타일은 CSS Modules와 전역 토큰을 사용합니다.
+- 컴포넌트 파일과 타입은 PascalCase, 함수와 변수는 camelCase, 테스트 파일은 `대상명.test.tsx`를 사용합니다. 스타일은 Tailwind CSS 유틸리티와 전역 토큰을 사용합니다. 기존 화면의 브라우저 기본 스타일을 유지하기 위해 Tailwind Preflight는 사용하지 않습니다.
 
 ## 예시 흐름
 

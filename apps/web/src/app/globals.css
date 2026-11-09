@@ -1,11 +1,206 @@
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Figma: Lanorx / Primitive, Color, Spacing & Radius, and text styles. */
+@theme static {
+  --color-neutral-white: #fff;
+  --color-neutral-985: #fafafa;
+  --color-neutral-970: #f5f5f5;
+  --color-neutral-922: #e5e5e5;
+  --color-neutral-708: #a1a1a1;
+  --color-neutral-556: #737373;
+  --color-neutral-269: #262626;
+  --color-neutral-205: #171717;
+  --color-neutral-145: #0a0a0a;
+  --color-red-light: #e7000b;
+  --color-red-dark: #ff6467;
+  --color-destructive-hover: #c9000a;
+  --color-primary-hover: #303030;
+  --color-secondary-hover: #e8e8e8;
+  --color-showcase-page: #f8f9fb;
+  --color-showcase-header-border: #e9eaed;
+  --color-showcase-divider: #c7cbd0;
+  --color-showcase-label: #8a9099;
+  --color-showcase-strong: #1f252e;
+  --color-showcase-intro-border: #e2e5e8;
+  --color-showcase-eyebrow: #57606b;
+  --color-showcase-status: #58a887;
+  --color-showcase-description: #858b95;
+  --color-showcase-version-border: #e3e6e9;
+  --color-showcase-version-text: #40464e;
+  --color-showcase-meta: #969da6;
+  --color-showcase-panel-border: #e7e9ed;
+  --color-showcase-check-border: #f0f1f3;
+  --color-showcase-card-icon: #a0a5ac;
+  --color-showcase-card-strong: #343a42;
+  --color-showcase-dialog-background: #f0f2f4;
+  --color-showcase-dialog-icon: #8b8b8b;
+  --color-showcase-footer: #a3a9b0;
+  --color-example-text: #182132;
+  --color-example-muted: #5d6676;
+  --color-example-border: #d5d9e0;
+  --color-example-link: #2459a6;
+  --color-black-6: #0001;
+  --color-black-13: #0002;
+  --color-black-20: #0003;
+  --color-black-53: #0008;
+  --color-showcase-shadow: #222a3508;
+  /* Figma spacing/1, /2, /3, /4, /6 and /8. */
+  --spacing: 4px;
+  --spacing-brand: 9px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  /* Existing UI and preview dimensions outside the Figma scale. */
+  --spacing-showcase-10: 10px;
+  --spacing-showcase-11: 11px;
+  --spacing-showcase-13: 13px;
+  --spacing-showcase-14: 14px;
+  --spacing-showcase-17: 17px;
+  --spacing-showcase-20: 20px;
+  --spacing-showcase-25: 25px;
+  --spacing-showcase-28: 28px;
+  --spacing-showcase-3: 3px;
+  --spacing-showcase-30: 30px;
+  --spacing-showcase-35: 35px;
+  --spacing-showcase-36: 36px;
+  --spacing-showcase-45: 45px;
+  --spacing-showcase-48: 48px;
+  --spacing-showcase-5: 5px;
+  --spacing-showcase-54: 54px;
+  --spacing-showcase-55: 55px;
+  --spacing-showcase-6: 6px;
+  --spacing-showcase-72: 72px;
+  --spacing-showcase-9: 9px;
+  --spacing-ui-badge-y: 2px;
+  --spacing-ui-card-gap: 10px;
+  --spacing-ui-input-y: 7px;
+  --spacing-showcase-header-x: 7%;
+  --spacing-example-xs: 0.5rem;
+  --spacing-example-sm: 0.75rem;
+  --spacing-example-md: 1.5rem;
+  --spacing-example-xl: 4rem;
+  --leading-body-xs: 16px;
+  --leading-body-sm: 20px;
+  --leading-title-lg: 28px;
+  --leading-tight: 1;
+  --leading-showcase-heading: 1.2;
+  --leading-showcase-body: 1.65;
+  --font-ui: Inter, Arial, sans-serif;
+  --font-showcase: Arial, sans-serif;
+  /* Figma project card dimensions, not general-purpose spacing. */
+  --size-project-card-min-height: 210px;
+  /* Shared component dimensions, expressed in pixels to match the design file. */
+  --size-control-sm: 32px;
+  --size-control-default: 36px;
+  --size-control-lg: 40px;
+  --size-control-indicator: 20px;
+  --size-badge-min-height: 22px;
+  --size-alert-min-height: 76px;
+  --size-textarea-min-height: 64px;
+  --size-table-row-height: 42px;
+  --size-skeleton-min-height: 16px;
+  --size-dialog-max-width: 480px;
+  --size-dialog-min-height: 200px;
+  --size-dialog-viewport-inset: 32px;
+  --border-width-ui: 1px;
+  --border-width-emphasis: 2px;
+  --stroke-icon: 2;
+  --radius-option: 4px;
+  --duration-ui-fast: 150ms;
+  --duration-ui-spinner: 1000ms;
+  --duration-ui-skeleton: 2000ms;
+  --animate-spin: spin var(--duration-ui-spinner) linear infinite;
+  --animate-pulse: pulse var(--duration-ui-skeleton)
+    cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --breakpoint-showcase: 700px;
+  --shadow-ui-control: 0 1px 3px var(--color-black-13);
+  --shadow-ui-input: 0 1px 3px var(--color-black-6);
+  --shadow-ui-popover: 0 4px 12px var(--color-black-13);
+  --shadow-ui-dialog: 0 12px 30px var(--color-black-20);
+  --shadow-showcase-panel: 0 2px 8px var(--color-showcase-shadow);
+  --size-showcase-header-height: 68px;
+  --size-showcase-content-width: 1180px;
+  --size-showcase-dot: 7px;
+  --size-showcase-skeleton-width: 320px;
+  --size-showcase-dialog-min-height: 180px;
+  --radius-showcase-panel: 12px;
+  --tracking-showcase-label: 0.09em;
+  --tracking-showcase-note: 0.1em;
+  --tracking-showcase-eyebrow: 0.12em;
+  --tracking-showcase-title: -0.06em;
+  --tracking-showcase-section: -0.04em;
+  --tracking-showcase-version: 0.07em;
+  --tracking-showcase-footer: 0.08em;
+  --size-example-page-max-width: 60rem;
+  --size-example-search-max-width: 24rem;
+  --text-brand: 24px;
+  --tracking-brand: -0.02em;
+  --text-body-xs: 12px;
+  --text-body-sm: 14px;
+  --text-title-base: 16px;
+  --text-title-lg: 18px;
+  --text-showcase-xs: 10px;
+  --text-showcase-code: 11px;
+  --text-showcase-sm: 13px;
+  --text-showcase-md: 15px;
+  --text-showcase-icon: 20px;
+  --text-showcase-heading: 22px;
+  --text-showcase-display-sm: 32px;
+  --text-showcase-display: 38px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+@theme inline {
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-destructive-foreground: var(--ui-destructive-foreground);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+}
+
 :root {
-  --color-text: #182132;
-  --color-muted: #5d6676;
-  --color-border: #d5d9e0;
-  --space-xs: 0.5rem;
-  --space-sm: 0.75rem;
-  --space-md: 1.5rem;
-  --space-xl: 4rem;
+  --ui-background: var(--color-neutral-white);
+  --ui-foreground: var(--color-neutral-145);
+  --ui-card: var(--color-neutral-white);
+  --ui-card-foreground: var(--color-neutral-145);
+  --ui-popover: var(--color-neutral-white);
+  --ui-popover-foreground: var(--color-neutral-145);
+  --ui-primary: var(--color-neutral-205);
+  --ui-primary-foreground: var(--color-neutral-985);
+  --ui-secondary: var(--color-neutral-970);
+  --ui-secondary-foreground: var(--color-neutral-205);
+  --ui-muted: var(--color-neutral-970);
+  --ui-muted-foreground: var(--color-neutral-556);
+  --ui-accent: var(--color-neutral-970);
+  --ui-accent-foreground: var(--color-neutral-205);
+  --ui-destructive: var(--color-red-light);
+  --ui-destructive-foreground: var(--color-neutral-985);
+  --ui-border: var(--color-neutral-922);
+  --ui-input: var(--color-neutral-922);
+  --ui-ring: var(--color-neutral-708);
+  --color-text: var(--color-example-text);
   --radius: 0.5rem;
 }
 
@@ -15,8 +210,8 @@
 body {
   margin: 0;
   color: var(--color-text);
-  font-family: Arial, sans-serif;
+  font-family: var(--font-showcase);
 }
-a {
-  color: #2459a6;
+a:not([class]) {
+  color: var(--color-example-link);
 }

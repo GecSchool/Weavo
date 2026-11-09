@@ -2,7 +2,13 @@
 
 import { useExampleProjects } from "../model/useExampleProjects";
 import { useProjectSearch } from "../model/useProjectSearch";
-import styles from "./ProjectList.module.css";
+
+const styles = {
+  search:
+    "block [width:min(100%,_var(--size-example-search-max-width))] p-example-sm mt-example-xs [border:var(--border-width-ui)_solid_var(--color-example-border)] [border-radius:var(--radius)] [font-family:inherit] [font-size:inherit] [font-weight:inherit] [line-height:inherit]",
+  list: "grid gap-example-sm p-0 [list-style:none]",
+  card: "p-example-md [border:var(--border-width-ui)_solid_var(--color-example-border)] [border-radius:var(--radius)] [&_h3]:m-0 [&_p]:m-0 [&_p]:mt-example-xs [&_p]:[color:var(--color-example-muted)]",
+};
 
 export function ProjectList() {
   const { data: projects = [], isPending, isError } = useExampleProjects();
