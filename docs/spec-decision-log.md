@@ -517,10 +517,11 @@ Control Service ─ 적재 작업 큐 ─ Ingestion Service ─ RDS PostgreSQL
 - `Analysis Service`는 초기 설정과 복구에서 반복 목록·레코드 경계·상세 이동 및 다음 목록 이동 후보를 분석하고 selector·변환 규칙 후보를 검증한다.
 - `Crawler Service`는 승인된 목록·상세 탐색 규칙을 실행하고 실행 중 관찰한 탐색 결과와 실패를 기록한다.
 - 최초 설정·스키마 변경에서 사용자가 승인한 규칙과 자동 힐링 검증을 통과한 규칙은 프로젝트 커넥터 정의에 저장한다.
-- `Ingestion Service` 내부의 공통 `ConnectorParser` 모듈은 최종 스냅샷에 승인된 selector와 `parser.code` 및 공통 정규화·타입 변환 규칙을 적용한다. 별도 값 가공이 없으면 `parser`는 null이다.
-- `ConnectorParser`는 공백과 HTML 엔티티 정규화, 필드별 값 가공과 `number`·`boolean`·`date`·`datetime`·`url` 타입 변환 및 실패 정보 생성을 담당한다. Analysis의 샘플 검증과 Crawler의 최신값 비교도 같은 파싱 결과와 정규화 기준이 필요하며 코드·실행 환경의 구체적 공유 방법은 미정이다.
+- Analysis·Crawler·Ingestion의 목표 기술 스택은 Java 21·Spring Boot다. 워커의 기존 Python 골격은 전환 전까지 유지한다.
+- 세 서비스가 포함하는 공통 Java `ConnectorParser` 모듈은 최종 스냅샷에 승인된 selector와 `parser.code` 및 공통 정규화·타입 변환 규칙을 적용한다. 별도 값 가공이 없으면 `parser`는 null이다.
+- `ConnectorParser`는 공백과 HTML 엔티티 정규화, 필드별 값 가공과 `number`·`boolean`·`date`·`datetime`·`url` 타입 변환 및 실패 정보 생성을 담당한다. Analysis의 샘플 검증과 Crawler의 최신값 비교도 같은 파싱 결과와 정규화 기준이 필요하며 공통 Java 모듈로 공유하며 모듈 구성·배포 및 생성 코드의 격리 실행 환경은 미정이다.
 - 정상 수집에서는 레코드마다 AI를 호출하지 않고 승인된 결정적 규칙만 반복 실행한다.
-- 별도의 Parser 마이크로서비스는 만들지 않고 Ingestion의 내부 모듈로 구현한다.
+- 별도의 Parser 마이크로서비스는 만들지 않고 공통 Java 모듈을 Analysis·Crawler·Ingestion에 포함하는 방향으로 구현한다. 생성 코드의 격리 실행 방식은 별도로 정한다.
 - 구조 파싱 실패는 공유 출처 문제로, 프로젝트별 값 파싱과 타입 변환 실패는 해당 프로젝트 커넥터 문제로 처리한다.
 
 ### 2.26 서비스 간 통신과 작업 메시지
@@ -792,7 +793,7 @@ Control Service ─ 적재 작업 큐 ─ Ingestion Service ─ RDS PostgreSQL
 - 구조·커넥터 오류가 아닌 상대 서버·브라우저의 일시적 실패에 대한 재시도, 실패 스냅샷·미처리 항목 처리 및 사용자 알림 기준. 기존 네트워크 재시도 기준과의 관계를 구체화한다.
 - 자동 복구에서 S3 승인 샘플 부족 시 통과 기준, 실제 출처 데이터 변경의 취급, 복구 재시도 횟수 및 공유 규칙의 연결 프로젝트 검증 실패 처리. DB 1~2건은 존재하는 데이터 전부가 일치해야 한다.
 - 추출·파싱·타입 변환 실패를 복구 대상으로 전환하는 감지 조건·임계값과 `validation_stopped` 사용 여부. 10회·30%는 확정하지 않는다.
-- `parser.code` Java 함수의 실행 위치·공통 실행 방식, 허용 런타임·격리·자원 제한 및 Python Analysis·Crawler와 Ingestion 간 결과 일치 검증.
+- `parser.code` Java 함수의 실행 위치·공통 실행 방식, 허용 런타임·격리·자원 제한 및 Analysis·Crawler·Ingestion 간 결과 일치 검증 및 공통 모듈의 배포 방식.
 - 스키마 변경 비교 화면에서 동일 레코드 대응 방식과 대표 샘플 10건 미만일 때의 처리.
 - 첫 목록에서 확인할 상세 샘플 수, 후보·AI 재시도 횟수와 승인 전 HTTP 검증 시간 예산.
 - S3 정리 주체·주기와 DB 참조 검사, 작업 결과 재발행 보장 기간 및 무한 스크롤 목록 항목 경계의 구체적 탐지 방식. 상세 이동 규칙은 필드 커넥터에 저장하며 객체 경로·본문·정리 조건은 S3 저장 명세를 따른다.

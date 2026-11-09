@@ -1,6 +1,6 @@
 # crawler 서비스
 
-Python 3.12 또는 3.13과 로컬 인프라가 필요합니다.
+목표 기술 스택은 Java 21·Spring Boot와 Playwright for Java입니다. 현재 아래 명령은 전환 전 Python 골격에 대한 안내이며, 실행에는 Python 3.12 또는 3.13과 로컬 인프라가 필요합니다. Java 전환 후 실행·테스트 방법을 갱신합니다.
 
 ```bash
 python3 -m venv .venv

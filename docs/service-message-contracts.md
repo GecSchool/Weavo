@@ -39,7 +39,7 @@
 
 | 항목 | 형식·규칙 |
 |---|---|
-| 메시지 인코딩 | UTF-8 JSON. Java·Python 클래스 이름을 메시지의 직렬화 타입 정보로 사용하지 않는다. |
+| 메시지 인코딩 | UTF-8 JSON. 구현 언어의 클래스 이름을 메시지의 직렬화 타입 정보로 사용하지 않는다. |
 | 시간 | RFC 3339 UTC 문자열. 예: 2026-11-06T00:00:00Z. 비교·정렬은 수신 시각 대신 작업 관계와 버전을 기준으로 한다. |
 | 실행 시간 | 양의 정수 초. max_duration_seconds는 실행 시작 후 예산이며 expires_at과 다르다. |
 | URL | 절대 HTTP(S) URL. 이동 시 base URL에 상대 주소를 해석할 수 있지만 메시지의 시작 URL은 절대 주소다. |
@@ -208,7 +208,7 @@ language, runtime_profile, entry_class, source_ref, source_sha256, artifact_ref,
 
 ### 4.3 공통 실행 규칙
 
-Analysis·Crawler·Ingestion은 같은 함수 틀, Java 실행 환경, 타입 변환·정규화 규칙을 사용해야 한다. Analysis·Crawler가 Python으로 구현되어도 같은 Java 코드를 실행할 방법이 필요하다. Ingestion만 Java를 실행하면 수집 중 비교값과 최종 저장값이 달라질 수 있다.
+Analysis·Crawler·Ingestion은 같은 함수 틀, Java 실행 환경, 타입 변환·정규화 규칙을 사용해야 한다. 세 서비스는 Java 21·Spring Boot와 공통 Java 파서 모듈을 목표로 하며, 생성 코드의 격리 실행 방식은 별도로 검증한다. 실행 환경이나 정규화 규칙이 다르면 수집 중 비교값과 최종 저장값이 달라질 수 있다.
 
 생성 코드를 Spring 서비스 JVM에서 직접 실행하면 파일 접근·무한 반복·메모리 소모가 서비스에 영향을 줄 수 있다. 격리 실행과 시간·메모리·출력 제한은 공통 실행 환경에서 관리한다. 이 설정을 파서마다 payload로 보내지 않는다. 단순 프로세스 분리만으로 권한 격리가 완료되는 것은 아니다.
 
@@ -1152,7 +1152,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 
 ### 12.3 최종 확인이 필요한 항목
 
-1. parser.code 형식은 합의되었으며, Python 기반 Analysis·Crawler와 Spring Ingestion에서 같은 Java 코드를 어떻게 실행할지 확인해야 한다. 격리 방식과 배치 실행 비용은 배포 구현에서 검증한다.
+1. parser.code 형식은 합의되었으며, Java 기반 Analysis·Crawler·Ingestion에서 공통 파서 모듈과 동일한 Java 코드를 어떻게 실행할지 확인해야 한다. 격리 방식과 배치 실행 비용은 배포 구현에서 검증한다.
 2. 생성 코드의 JDK·허용 의존성·입출력 ABI·시간/메모리/출력 제한. 함수 코드 편집을 사용자에게 노출할지는 현재 범위에 추가하지 않는다.
 3. nullable 추출·변환 실패가 있는 레코드의 부분 저장과 normal_extracted_record_count 기준.
 4. 목록 끝·이동 실패·무한 스크롤 새 항목 식별의 실제 판정, 반복된 동일 최신값의 일치 계산.
@@ -1172,7 +1172,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 - AWS S3 조건부 쓰기: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html
 - Oracle Java 격리 관련 안내: https://docs.oracle.com/en/java/javase/24/security/security-manager-is-permanently-disabled.html
 
-이 문서는 수집·분석·적재 메시지의 구현 출발점이다. 기존 제안서의 처리 서비스 기술표에는 Ingestion이 Python으로 남아 있으나 최근 역할 합의는 Spring이다. 해당 원문 기술표는 별도 최신화가 필요하다. 위의 미정 항목을 이미 구현되거나 기존에 합의된 결정으로 취급하지 않는다.
+이 문서는 수집·분석·적재 메시지의 구현 출발점이다. 처리 서비스의 목표 기술 스택은 Java 21·Spring Boot이며 제안서의 기술표에도 반영한다. 현재 워커의 Python 골격은 Java 전환 전까지 유지한다. 위의 미정 항목을 이미 구현되거나 기존에 합의된 결정으로 취급하지 않는다.
 
 ## 14 단순화 적용과 유지한 항목
 
@@ -1891,7 +1891,7 @@ Control은 같은 owner_id의 진행 중·완료된 탈퇴 정리 요청을 중�
 
 ### 17.2 전송 상황은 포함했지만 최종 결정되지 않은 부분
 
-1. Java 실행 환경·격리·같은 파싱 코드의 Python/Java 실행 방식. 이번 작업에서 새로운 파서 런타임을 구현한 것은 아니다.
+1. Java 실행 환경·격리·세 서비스의 공통 파싱 코드 실행 방식. 이번 작업에서 새로운 파서 런타임을 구현한 것은 아니다.
 2. 승인 샘플 부족 판정과 복구 재시도 횟수. DB 1~2건은 모두 비교·일치하는 것으로 결정했다. 필드 실패 레코드 저장과 복구 감지의 최근 대화 결정은 관련 스펙에 반영할 별도 작업이다.
 3. 16.5 계정 정리 내부 HTTP 경로, 탈퇴 후 기발급 JWT 차단, 삭제된 프로젝트의 작업 조회 권한·보관 정책.
 4. API 키 즉시 폐기와 버전 전환의 Data 캐시 무효화 경로. 필요 전송 상황은 15.18에 표시했으며 임의의 새 큐·이벤트를 추가하지 않았다.
