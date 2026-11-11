@@ -57,3 +57,21 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew --no-daemon spotlessCheck test
+
+  workers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [analysis, crawler]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew --no-daemon spotlessCheck test

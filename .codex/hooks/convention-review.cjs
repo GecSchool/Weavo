@@ -8,7 +8,7 @@ const path = require('node:path');
 
 function digest(value) { return createHash('sha256').update(value).digest('hex'); }
 function relevant(file) {
-  return /^(apps\/web\/(src\/.*\.(tsx?|css)|.*\.(tsx?|mjs))|services\/(auth|control|data|ingestion)\/src\/.*\.(java|sql))$/.test(file);
+  return /^(apps\/web\/(src\/.*\.(tsx?|css)|.*\.(tsx?|mjs))|services\/(auth|control|data|ingestion|analysis|crawler)\/src\/.*\.(java|sql))$/.test(file);
 }
 function snapshot(root) {
   const result = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root });

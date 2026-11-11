@@ -1,6 +1,6 @@
 # 프론트·Spring 코드 컨벤션 환경
 
-팀 코드 컨벤션 최종본의 형식·테스트·리뷰 기준과 각 서비스 README의 기능별 파일 구조를 사용한다. 업무 동작과 서비스 간 형식은 `spec-decision-log.md`, `service-message-contracts.md`, `s3-storage-contract.md`가 기준이다. Python 서비스 설정은 이 문서의 적용 범위에 포함하지 않는다.
+팀 코드 컨벤션 최종본의 형식·테스트·리뷰 기준과 각 서비스 README의 기능별 파일 구조를 사용한다. 업무 동작과 서비스 간 형식은 `spec-decision-log.md`, `service-message-contracts.md`, `s3-storage-contract.md`가 기준이다. Analysis·Crawler도 Java 서비스로 같은 기준을 적용한다.
 
 ## 처음 설정
 
@@ -11,10 +11,10 @@
 ## 검사 명령
 
 - 프론트: `cd apps/web`에서 `npm run format:check`, `npm run lint -- --max-warnings=0`, `npm run typecheck`, `npm test`. 자동 포맷은 `npm run format`이다.
-- Spring: 각 `services/{auth,control,data,ingestion}`에서 `./gradlew spotlessCheck`, `./gradlew test`. 자동 포맷은 `./gradlew spotlessApply`다. DB가 필요한 테스트는 해당 서비스 README의 로컬 환경이 필요하다.
+- Spring: 각 `services/{auth,control,data,ingestion,analysis,crawler}`에서 `./gradlew spotlessCheck`, `./gradlew test`. 자동 포맷은 `./gradlew spotlessApply`다. DB가 필요한 테스트는 해당 서비스 README의 로컬 환경이 필요하다.
 - Git `pre-commit`은 스테이징된 변경에 해당하는 영역만 선택한다. 해당 영역 전체의 빠른 포맷·정적 검사를 수행하며 부분 스테이징된 코드 파일은 정확히 검사할 수 없으므로 거부한다. 테스트 전체는 CI와 작업별 검증에서 수행한다.
 - `commit-msg`는 `feat`, `fix`, `refactor`, `test`, `docs`, `chore` 유형을 검사한다. Git의 merge/revert/fixup/squash 메시지도 허용한다.
-- CI는 프론트 검사와 네 Spring 서비스의 Spotless·테스트를 수행한다. Spring 테스트는 PostgreSQL 서비스를 사용한다. CI는 모든 프로젝트에 대해 실행하며 필요하면 추후 변경 범위별로 최적화한다.
+- CI는 프론트 검사와 여섯 Spring 서비스의 Spotless·테스트를 수행한다. DB를 사용하는 네 서비스의 CI에만 PostgreSQL을 제공한다. CI는 모든 프로젝트에 대해 실행하며 필요하면 추후 변경 범위별로 최적화한다.
 
 ## Codex 검토
 
