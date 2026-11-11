@@ -325,7 +325,7 @@
 - 프로젝트 스키마 버전은 `v1`, `v2`처럼 1씩 증가시킨다.
 - 레코드 API 경로는 `/api/projects/{project_id}/v{schema_version}/records` 형식을 사용한다.
 - 경로의 `v{schema_version}`은 프로젝트 데이터 스키마 계약의 버전이며 서비스 자체 API의 전역 버전을 의미하지 않는다.
-- 수동 수집은 `POST /control/v1/projects/{project_id}/sources/{source_id}/collect`로 요청하며, 프로젝트 소유권과 출처 연결을 확인한 뒤 출처 단위 작업을 생성하고 `202`와 `job_id`를 반환한다. 프로젝트 전체 수동 수집은 `POST /control/v1/projects/{project_id}/collect`로 요청하며 소유권을 확인하고 `202`와 대표 `job_id`를 반환한다.
+- 수동 수집은 `POST /control/v1/projects/{project_id}/sources/{project_source_id}/collect`로 요청하며, 프로젝트 소유권과 출처 연결을 확인한 뒤 출처 단위 작업을 생성하고 `202`와 `job_id`를 반환한다. 프로젝트 전체 수동 수집은 `POST /control/v1/projects/{project_id}/collect`로 요청하며 소유권을 확인하고 `202`와 대표 `job_id`를 반환한다.
 - 사용자가 후보를 수정하면 Control은 변경 revision을 기록하고 필요 시 자동 재검증을 요청한다. 검증 결과는 analysis_id·후보 revision·출처별 상태에 연결하며 별도 검증 요청 API는 제공하지 않는다.
 - 최초 설정과 사용자 승인 스키마 변경에서는 현재 후보와 각 출처의 검증 성공 revision이 같은지 확인한다. 스키마 유지 자동 복구는 사용자 승인 없이 검증 통과 결과를 적용한다.
 - 스키마 활성화 요청은 현재 후보 revision과 출처별 검증 성공 revision을 확인한다. 출처별 최대 5분 재수집과 데이터 교체를 조정하며 `202`와 전환 job_id 또는 준비 실패 `422`를 반환한다.
