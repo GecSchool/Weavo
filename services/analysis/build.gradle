@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'com.diffplug.spotless' version '8.11.0'
+    id 'org.springframework.boot' version '4.0.9'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.weavo.analysis'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation platform('software.amazon.awssdk:bom:2.31.77')
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sqs'
+    implementation 'com.microsoft.playwright:playwright:1.55.0'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+spotless { java { googleJavaFormat() } }
+
+tasks.register('installChromium', JavaExec) {
+    group = 'playwright'
+    description = 'Install the Chromium version required by Playwright.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.microsoft.playwright.CLI'
+    args 'install', 'chromium'
+}
+
+tasks.register('browserSmokeTest', Test) {
+    group = 'verification'
+    description = 'Launch Chromium and check a local in-memory HTML page.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    systemProperty 'weavo.browser.smoke', 'true'
+    environment 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1'
+    filter { includeTestsMatching '*BrowserSmokeTest' }
+}

@@ -1172,7 +1172,7 @@ deleted_record_count는 필요한 경우 선택 통계로 추가한다. Control�
 - AWS S3 조건부 쓰기: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html
 - Oracle Java 격리 관련 안내: https://docs.oracle.com/en/java/javase/24/security/security-manager-is-permanently-disabled.html
 
-이 문서는 수집·분석·적재 메시지의 구현 출발점이다. 처리 서비스의 목표 기술 스택은 Java 21·Spring Boot이며 제안서의 기술표에도 반영한다. 현재 워커의 Python 골격은 Java 전환 전까지 유지한다. 위의 미정 항목을 이미 구현되거나 기존에 합의된 결정으로 취급하지 않는다.
+이 문서는 수집·분석·적재 메시지의 구현 출발점이다. 처리 서비스의 목표 기술 스택은 Java 21·Spring Boot이며 제안서의 기술표에도 반영한다. 현재 워커는 Java 연결 확인 골격이며 실제 메시지 소비와 파서는 아직 구현하지 않았다. 위의 미정 항목을 이미 구현되거나 기존에 합의된 결정으로 취급하지 않는다.
 
 ## 14 단순화 적용과 유지한 항목
 

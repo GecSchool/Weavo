@@ -517,7 +517,7 @@ Control Service ─ 적재 작업 큐 ─ Ingestion Service ─ RDS PostgreSQL
 - `Analysis Service`는 초기 설정과 복구에서 반복 목록·레코드 경계·상세 이동 및 다음 목록 이동 후보를 분석하고 selector·변환 규칙 후보를 검증한다.
 - `Crawler Service`는 승인된 목록·상세 탐색 규칙을 실행하고 실행 중 관찰한 탐색 결과와 실패를 기록한다.
 - 최초 설정·스키마 변경에서 사용자가 승인한 규칙과 자동 힐링 검증을 통과한 규칙은 프로젝트 커넥터 정의에 저장한다.
-- Analysis·Crawler·Ingestion의 목표 기술 스택은 Java 21·Spring Boot다. 워커의 기존 Python 골격은 전환 전까지 유지한다.
+- Analysis·Crawler·Ingestion은 Java 21·Spring Boot를 사용한다. Analysis·Crawler의 현재 구현은 설정 및 리소스 연결 확인 골격이며 업무 기능과 공통 파서는 아직 구현하지 않았다.
 - 세 서비스가 포함하는 공통 Java `ConnectorParser` 모듈은 최종 스냅샷에 승인된 selector와 `parser.code` 및 공통 정규화·타입 변환 규칙을 적용한다. 별도 값 가공이 없으면 `parser`는 null이다.
 - `ConnectorParser`는 공백과 HTML 엔티티 정규화, 필드별 값 가공과 `number`·`boolean`·`date`·`datetime`·`url` 타입 변환 및 실패 정보 생성을 담당한다. Analysis의 샘플 검증과 Crawler의 최신값 비교도 같은 파싱 결과와 정규화 기준이 필요하며 공통 Java 모듈로 공유하며 모듈 구성·배포 및 생성 코드의 격리 실행 환경은 미정이다.
 - 정상 수집에서는 레코드마다 AI를 호출하지 않고 승인된 결정적 규칙만 반복 실행한다.

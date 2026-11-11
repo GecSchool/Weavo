@@ -1,40 +1,41 @@
 # crawler 서비스
 
-목표 기술 스택은 Java 21·Spring Boot와 Playwright for Java입니다. 현재 아래 명령은 전환 전 Python 골격에 대한 안내이며, 실행에는 Python 3.12 또는 3.13과 로컬 인프라가 필요합니다. Java 전환 후 실행·테스트 방법을 갱신합니다.
+Java 21과 Gradle Wrapper를 사용합니다. 현재는 환경 설정과 SQS·S3 리소스 연결 확인 기능만 구현되어 있습니다. 분석·수집, 메시지 소비와 결과 발행은 아직 구현하지 않았습니다. DB 연결은 사용하지 않습니다.
+
+## 실행 및 테스트
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.lock
-pip install --no-deps -e .
-python -m playwright install chromium
-pytest
-ruff check .
+./gradlew test
+./gradlew spotlessCheck
+./gradlew bootRun
 ```
 
-로컬 리소스 연결을 확인할 때:
+현재 워커는 처리할 메시지 리스너가 없어 일반 실행 시 별도 작업을 하지 않고 종료될 수 있습니다. 리소스를 확인하려면 로컬 인프라를 시작한 후 다음 명령을 사용합니다.
 
 ```bash
-WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 python -m weavo_crawler --check
+WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun --args='--check'
 ```
 
-`--check`는 큐와 버킷의 존재만 조회하며 메시지를 수신하거나 삭제하지 않습니다. 비로컬 환경은 `WEAVO_ENV=dev`, AWS 인증과 `WEAVO_S3_BUCKET`, 각 큐 이름 환경 변수가 필요하고 로컬 endpoint는 지정하지 않습니다. 브라우저·메시지 소비·분석 및 크롤링 업무 로직은 아직 구현되지 않았습니다.
+확인 대상은 `collection-priority-jobs`, `collection-scheduled-jobs`, `control-results` 큐와 `weavo-local-artifacts` 버킷입니다. 큐 URL 조회와 S3 버킷 확인만 수행하며 메시지를 받거나 삭제하지 않습니다. 연결 실패 시 오류로 종료합니다.
 
-## 현재 파일 구조
+`WEAVO_ENV`는 `local`, `dev`, `prod`이며 기본은 `local`입니다. 로컬에서는 `WEAVO_AWS_ENDPOINT_URL`이 필수입니다. AWS 환경에서는 endpoint를 지정하지 않으며 `WEAVO_S3_BUCKET`과 해당 큐 이름을 명시합니다. `AWS_REGION` 기본값은 `ap-northeast-2`입니다. AWS 인증은 기본 자격 증명 체인을 사용합니다. 예시는 `.env.example`을 참고하되 해당 파일은 자동으로 읽지 않으므로 환경 변수로 직접 설정해야 합니다.
+
+## Playwright Chromium
+
+```bash
+./gradlew installChromium
+./gradlew browserSmokeTest
+```
+
+기본 `test`에서는 브라우저를 실행하지 않습니다. 브라우저 테스트는 명시적으로 실행하며 설치·실행에 필요한 OS 라이브러리는 환경에 맞게 준비해야 합니다.
+
+## 구조
 
 ```text
-services/crawler/
-├── pyproject.toml             # 프로젝트와 의존성 정의
-├── requirements.lock          # 고정 의존성
-├── .env.example               # 설정 예시
-├── src/weavo_crawler/
-│   ├── __main__.py            # --check 진입점과 자원 확인
-│   ├── config.py              # 환경 설정과 자원 이름 검증
-│   └── aws.py                 # SQS·S3 클라이언트 생성
-└── tests/
-    └── test_config.py         # 환경 설정 단위 테스트
+src/main/java/com/weavo/crawler/
+├── CrawlerApplication.java  # Spring Boot 진입점 및 --check
+├── WorkerSettings.java             # 환경 및 리소스 설정 검증
+└── AwsResourceChecker.java         # SQS·S3 읽기 전용 연결 확인
 ```
 
-예를 들어 `python -m weavo_crawler --check`를 실행하면 `__main__.py`가 `config.py`의 설정을 읽고 `aws.py`로 클라이언트를 만든 다음, 우선 수집 큐, 정기 수집 큐와 Control 결과 큐 및 S3 버킷의 존재를 확인합니다. 이 과정은 메시지를 읽거나 데이터를 적재하지 않습니다.
-
-분석·수집과 메시지 처리 코드는 아직 없습니다. 실제 기능을 만들 때 요청, 외부 연동, 처리 로직과 결과 전달을 역할에 맞게 나누고, 테스트에서는 외부 시스템을 대역으로 교체합니다.
+실제 기능을 구현할 때 기능별 패키지를 먼저 나누고 필요한 책임만 추가합니다. 공통 Java 파서 모듈과 생성 코드의 격리 실행은 아직 구현하지 않았습니다.

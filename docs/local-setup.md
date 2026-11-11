@@ -2,7 +2,7 @@
 
 ## 준비
 
-Git, Docker Desktop 및 Docker Compose가 필요합니다. Spring 서비스 개발에는 JDK 21, 프론트엔드에는 Node.js, 분석·크롤러는 Java 21·Spring Boot로 전환할 계획이며, 현재 구현을 실행하려면 Python이 필요합니다. 각 서비스의 버전과 실행 방법은 아래 표와 서비스 README를 참고하세요.
+Git, Docker Desktop 및 Docker Compose가 필요합니다. Spring 서비스 개발에는 JDK 21, 프론트엔드에는 Node.js가 필요합니다. 분석·크롤러도 Java 21·Spring Boot를 사용합니다. 각 서비스의 버전과 실행 방법은 아래 표와 서비스 README를 참고하세요.
 
 LocalStack 계정의 유효한 인증 토큰을 준비합니다. [Auth Tokens 페이지](https://app.localstack.cloud/workspace/auth-tokens)에 로그인해 개인 개발용 Developer Token을 확인합니다. Docker Compose로 실행할 때는 이 토큰이 필요합니다. 토큰은 다른 사람에게 전달하거나 Git에 커밋하지 않습니다.
 
@@ -47,11 +47,11 @@ DLQ는 만들어 두지만 기술 재전달 횟수와 redrive 정책은 아직 �
 
 ## 애플리케이션 실행
 
-Node.js는 `apps/web/.nvmrc`의 22.23.3, Spring은 Java 21을 사용합니다. 전환 전 Analysis·Crawler의 현재 Python 골격은 3.12 또는 3.13을 사용합니다. 각 서비스 디렉터리의 README에 설치·실행·테스트 명령이 있습니다. 프론트엔드는 `cd apps/web && nvm install && nvm use && npm ci && npm run dev`로 실행합니다.
+Node.js는 `apps/web/.nvmrc`의 22.23.3, Spring은 Java 21을 사용합니다. 각 서비스 디렉터리의 README에 설치·실행·테스트 명령이 있습니다. 프론트엔드는 `cd apps/web && nvm install && nvm use && npm ci && npm run dev`로 실행합니다.
 
 로컬 인프라가 실행된 상태에서 Spring 서비스 디렉터리별로 `./gradlew bootRun`을 실행합니다. 상태 확인 주소는 각각 `http://localhost:8081/actuator/health` (Auth), 8082 (Control), 8083 (Data), 8084 (Ingestion)입니다. 포트와 DB 연결은 각 서비스의 `application-local.properties`에서 환경 변수로 변경할 수 있습니다.
 
-현재 Python 골격의 Analysis·Crawler는 각각 `.venv`를 만들고 README의 고정 의존성을 설치합니다. `WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 python -m weavo_crawler --check` 또는 `python -m weavo_analysis --check`로 큐·버킷 연결을 조회할 수 있습니다. 이 명령은 메시지를 소비하지 않습니다. 배포 환경은 로컬 endpoint와 테스트 자격 증명을 사용하지 않으며 리소스 이름을 환경 변수로 지정합니다.
+Analysis·Crawler는 각 서비스 디렉터리에서 `WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun --args='--check'`로 큐·버킷 연결을 조회합니다. 메시지는 소비하지 않습니다. Chromium 설치와 브라우저 확인은 각 README의 `installChromium`·`browserSmokeTest`를 사용합니다. 배포 환경은 로컬 endpoint와 테스트 자격 증명을 사용하지 않으며 리소스 이름을 환경 변수로 지정합니다.
 
 ## 프로젝트 위치와 서비스별 안내
 
@@ -62,10 +62,10 @@ Node.js는 `apps/web/.nvmrc`의 22.23.3, Spring은 Java 21을 사용합니다. �
 | [Control](../services/control/README.md) | Spring Boot · Java 21 | `./gradlew bootRun` (8082) |
 | [Data](../services/data/README.md) | Spring Boot · Java 21 | `./gradlew bootRun` (8083) |
 | [Ingestion](../services/ingestion/README.md) | Spring Boot · Java 21 | `./gradlew bootRun` (8084) |
-| [Analysis](../services/analysis/README.md) | 현재 Python · Playwright · boto3; 목표 Java 21 · Spring Boot | 서비스 README 참고 |
-| [Crawler](../services/crawler/README.md) | 현재 Python · Playwright · boto3; 목표 Java 21 · Spring Boot | 서비스 README 참고 |
+| [Analysis](../services/analysis/README.md) | Java 21 · Spring Boot · Playwright for Java | 서비스 README 참고 |
+| [Crawler](../services/crawler/README.md) | Java 21 · Spring Boot · Playwright for Java | 서비스 README 참고 |
 
-`infra/local/`에는 로컬 PostgreSQL·Redis·LocalStack 설정이 있고, `services/`와 `apps/`에는 각각 백엔드와 프론트엔드 프로젝트가 있습니다. 현재 Python의 `--check`는 연결 확인만 하며, 실제 업무 기능과 메시지 소비는 구현 전입니다.
+`infra/local/`에는 로컬 PostgreSQL·Redis·LocalStack 설정이 있고, `services/`와 `apps/`에는 각각 백엔드와 프론트엔드 프로젝트가 있습니다. 현재 `--check`는 연결 확인만 하며, 실제 업무 기능과 메시지 소비는 구현 전입니다.
 
 ## DB 스키마 변경 관리
 
