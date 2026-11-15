@@ -2,6 +2,8 @@
 
 팀 코드 컨벤션 최종본의 형식·테스트·리뷰 기준과 각 서비스 README의 기능별 파일 구조를 사용한다. 업무 동작과 서비스 간 형식은 `spec-decision-log.md`, `service-message-contracts.md`, `s3-storage-contract.md`가 기준이다. Analysis·Crawler도 Java 서비스로 같은 기준을 적용한다.
 
+브랜치 이름과 커밋·PR 규칙은 [Git 협업 컨벤션](git-conventions.md)을 따른다.
+
 ## 처음 설정
 
 1. `apps/web`에서 README에 명시된 Node 버전을 사용해 `npm ci`를 실행한다.
