@@ -70,7 +70,7 @@ erDiagram
 | 논리 항목 | 역할과 검토 사항 |
 | --- | --- |
 | `ACCOUNT` | 로그인 계정의 소유자 ID, 이메일, 비밀번호 해시와 사용자 정보를 보관한다. 비밀번호 원문은 저장하지 않는다. |
-| `REFRESH_SESSION` | Auth DB에 refresh 토큰의 해시·만료·폐기 상태를 보관하고 원자적 회전과 폐기를 지원한다. 웹은 HttpOnly·Secure 쿠키와 세션에 결합된 CSRF 값을 사용한다. |
+| `REFRESH_SESSION` | Auth DB에 refresh 토큰의 해시·만료·폐기 상태를 보관하고 원자적 회전과 폐기를 지원한다. 웹은 HttpOnly·Secure `weavo_refresh` 쿠키와 세션에 결합된 CSRF 값을 사용한다. |
 ### 이메일 인증 상태: Redis
 
 이메일 인증번호와 인증 완료 상태는 **RDS 테이블을 만들지 않고 Redis의 만료되는 임시 상태**로 관리한다. 회원가입 전에는 계정이 존재하지 않을 수 있으므로 이메일과 인증 목적을 기준으로 구분한다. Redis의 구체적인 키·값 구조는 예시이며 구현 시 결정한다.
@@ -128,7 +128,7 @@ erDiagram
         string detail_navigation "nullable; 링크 또는 클릭과 복귀"
         string selector "nullable"
         string extract_type "TEXT 또는 ATTRIBUTE, nullable"
-        string extract_attribute "nullable"
+        string extract_attribute "TEXT: null; ATTRIBUTE: 비어 있지 않은 속성 이름"
         string parser_code "nullable"
     }
 ```
@@ -178,7 +178,7 @@ erDiagram
         uuid project_source_id FK
         string validation_status
         string sample_reference "nullable"
-        int sample_revision "nullable; 생성된 revision"
+        int sample_revision "nullable; S3 샘플 본문의 생성 revision"
         string inheritance_reason "nullable"
     }
     JOB {
@@ -188,6 +188,7 @@ erDiagram
         uuid source_id FK "nullable"
         string job_type
         string status
+        datetime created_at "작업 생성 시각; 최근 조회 정렬"
         uuid active_attempt_id "Analysis·Crawler; nullable"
         datetime lease_expires_at "DB 시간 기준; nullable"
         uuid accepted_event_id "결과 채택 전 nullable"
@@ -197,7 +198,6 @@ erDiagram
         uuid request_job_id FK "요청별 job"
         uuid collection_job_id FK "공유 실행 job"
         uuid project_source_id FK
-        uuid ingestion_job_id FK "nullable; 적재 불필요 또는 발행 전"
         string status
     }
     JOB_PROJECT_RESULT {
@@ -220,7 +220,7 @@ erDiagram
 | `ANALYSIS` | 초기·스키마 수정·출처 추가 등의 분석 단위를 식별하고 현재 후보 revision과 상태를 관리한다. `analysis_id`와 개별 작업 `job_id`는 다르다. 공유 출처 복구는 source_id와 프로젝트별 검증 대상을 사용한다. |
 | 분석 후보 | 현재 후보를 `ANALYSIS`에 보관한다. revision별 전체 이력은 전제하지 않으며 사용자 수정과 검증 상태를 원자적으로 관리한다. |
 | `SOURCE_VALIDATION` | 어느 후보 revision을 어느 출처에서 검증했는지, 통과 여부와 S3 샘플 참조·생성 revision·승계 근거를 표현한다. 분석의 출처별 중간 결과 참조는 후보 메타데이터에 보관한다. 샘플 원문은 S3에 있다. 별도 `validation_id`는 전제하지 않는다. |
-| `JOB_EXECUTION_LINK` | 요청 job·공유 collection job·project_source_id와 필요 시 ingestion_job_id를 연결한다. 복합 유일 제약으로 중복을 막고 해당 적재 종료까지 요청별로 집계한다. 공유 실행은 여러 요청에서 참조할 수 있다. |
+| `JOB_EXECUTION_LINK` | 요청 job·공유 collection job·project_source_id를 연결한다. 복합 유일 제약으로 중복을 막고 해당 적재 종료까지 요청별로 집계한다. 공유 실행은 여러 요청에서 참조할 수 있다. |
 | `JOB_PROJECT_RESULT` | `(job_id, project_source_id)` 기준 프로젝트 출처별 결과. 수집과 적재는 각 단계의 별도 job_id로 구분한다. |
 | `JOB` | 분석·수집·적재·준비·삭제 등 Control의 작업 원장. 공유 출처 작업은 project_id 없이 source_id를 가질 수 있고, project 작업은 source_id 없이 존재할 수 있다. 부모 작업과 자식 작업을 구분한다. |
 | `OUTBOX` | 업무 상태와 함께 트랜잭션으로 기록한 뒤 SQS로 발행할 메시지. 내부 구현 세부는 제안이며 메시지별 송신처와 재발행 규칙을 반영해야 한다. |
@@ -370,13 +370,13 @@ erDiagram
 
 이 항목들을 결정한 다음 컬럼별 타입·PK/FK·고유 제약·인덱스·삭제 정책을 구체화하고, 초기 테이블부터 각 DB 소유 서비스의 Flyway SQL과 JPA 엔티티로 옮긴다.
 
-## 9. 확정된 연결 계약의 논리 저장 항목
+## 9. 작업·인증·데이터 저장 항목
 
 - Auth `REFRESH_SESSION`은 Auth DB에 token_hash·만료·폐기를 저장한다. 이메일 인증번호 해시·purpose·만료·시도 수와 이메일·purpose에 연결된 일회용 증명 해시·만료·사용 상태는 Redis에 둔다. 번호 5분/5회·증명 10분이며 재발송은 이전 번호·증명을 무효화한다. 가입 DB 실패 후 재인증한다.
 - Control은 PROJECT의 소유자·수집 목적·알림 외에 프로젝트 생성 idempotency key·요청 해시·결과와 최소 24시간 만료를 소유자 범위로 기록한다. ANALYSIS는 현재 후보·recommendation_reason, SOURCE_VALIDATION은 revision·sample_ref·sample_revision을 소유한다. 프로젝트 응답은 current_analysis_id·current_job_id를 제공한다.
 - JOB/PROJECT_SOURCE 결과는 대상 출처·단계·시각·목록 항목 수·정상 추출 수·오류를 보관하며 아직 알 수 없는 수치는 null이다. JOB은 진행 실행 attempt_id·lease 만료 및 채택된 event_id·result_ref를 기록한다. 수신 event_id 중복 기록 및 후속 Outbox는 같은 트랜잭션에서 처리한다. Scheduler 신호의 (source_id, scheduled_at) 유일 처리와 일정 슬롯·상태를 Control이 관리한다. 구체 테이블 분할은 구현 선택이다.
 - Data의 PROJECT_SCHEMA/SCHEMA_FIELD는 최초·리비전의 승인 change_job_id로 준비 상태를 관리한다. PROJECT_DATA_STATE.active_schema_version은 최초 공개 전 null이며 project write_state는 전환·삭제 중 쓰기를 막는다. RECORD.field_values는 JSONB(field_id→값)이며 record_id는 전역 PostgreSQL sequence; 프로젝트 단위 락과 역순 저장을 사용한다. 같은 변경과 PREPARE 결과인지 receipt·change_job_id를 검사한다.
-- 프로젝트 삭제 후 작업 결과 조회·멱등 처리에 필요한 소유자·job_id·상태 등 최소 작업 원장은 재처리 기간 동안 유지한다. `API_KEY`는 해시·폐기 상태를 Data가 소유하고 Data가 Redis에 기록한 last_used_at을 Data 키 목록이 조회한다. 원본 확인 불가 시 폐기 키 접근을 허용하지 않는다.
+- 프로젝트 삭제 진행 중에는 복구·재처리용 작업 원장을 유지한다. 완료 후에는 사용자용 삭제 작업 조회를 제공하지 않으며 멱등 처리와 지연 메시지 차단에 필요한 최소 기술 기록은 재처리 가능 기간 유지한다. `API_KEY`는 해시·폐기 상태를 Data가 소유하고 Data가 Redis에 기록한 last_used_at을 Data 키 목록이 조회한다. 원본 확인 불가 시 폐기 키 접근을 허용하지 않는다.
 
 ## 10. 빈 프로젝트와 실행 규칙 동기화
 
@@ -389,9 +389,9 @@ erDiagram
 - PROJECT.source_mapping_revision은 승인된 적용 중·활성 출처 매핑의 생성·수정·제거와 같은 Control DB 트랜잭션에서 증가한다. Data DB의 dataset_revision과는 별개다. 삭제 완료 전에는 조회용 매핑을 유지한다. schema_metadata_revision은 공개 전 null이며 최초 공개 시 0으로 초기화한다.
 
 
-## 실행 계약 보완
+## 작업 실행과 참조
 
-- JOB_EXECUTION_LINK의 ingestion_job_id는 collection job과 project_source_id에 대응하는 논리 적재 job이며 적재 발행 전·정상 NO_CHANGE는 null이다. 늦게 연결한 요청도 Control 원장을 조회하고 적재 결과 미확인 시 같은 ingestion.execute를 재전달해 기존 receipt 결과를 재발행받는다. 대표 job은 모든 링크 종료 후 SUCCEEDED/PARTIAL/FAILED를 확정한다. 공통 결과나 다른 프로젝트를 요청자에게 노출하지 않는다.
+- JOB_EXECUTION_LINK는 수동 요청과 실제 수집 및 프로젝트 출처만 연결한다. 정기·수동 모두 적재 JOB.parent_job_id는 collection job을 가리키고 적재 JOB_PROJECT_RESULT가 해당 project_source_id를 연결한다. 적재 전·전혀 변경 없는 회차는 적재 JOB이 없다. 늦게 연결한 요청도 Control 원장을 조회하고 적재 결과 미확인 시 같은 ingestion.execute를 재전달해 기존 receipt 결과를 재발행받는다. 대표 job은 모든 링크 종료 후 SUCCEEDED/PARTIAL/FAILED를 확정한다. 공통 결과나 다른 프로젝트를 요청자에게 노출하지 않는다.
 - ANALYSIS 후보는 전체 source_rules.navigation·field_connectors·excluded_project_source_ids와 필드 display_order·description을 보관한다. SOURCE_VALIDATION은 현재 validation_revision과 실제 sample_revision·S3 참조를 구분한다. 새 필드 표시 정보의 초기값은 Control이 후보 채택 때 한 번 설정한다.
 - API_KEY의 개수 제한은 없다. Data는 PROJECT_DATA_STATE를 생성 또는 잠그고 삭제 차단 상태 확인과 키 발급을 같은 트랜잭션으로 처리한다. 프로젝트 삭제의 차단 기록은 재처리 기간 동안 유지한다. 스키마와 레코드는 같은 DB 읽기 스냅샷에서 읽는다. 공개 스키마 캐시 테이블은 만들지 않는다.
 - 삭제 진행 계정은 Auth DB에 접수 재시도에 필요한 owner_id·정리 상태를 보유하고 Control은 같은 owner_id의 상위 정리 job을 재사용한다. 개인정보 최종 삭제 후 최소 정리 원장만 재처리 기간에 유지한다. 실제 경로·필드·결과는 메시지 명세 20절이다.
@@ -410,8 +410,19 @@ erDiagram
 
 기록과 재발행용 객체는 관련 SQS·DLQ 재처리 가능 기간 이상 보관하며 구체 수치는 운영 설정이다. Control과 Data 사이의 DB 트랜잭션을 하나로 가정하지 않는다.
 
-### 논리 저장 항목 보완
+### 후보와 수신 결과 저장
 
 - ANALYSIS 후보와 대상 PROJECT_SOURCE는 같은 Control 트랜잭션의 revision 조건부 갱신으로 연결한다. 진행 중 출처 재시도는 `(analysis_id, project_source_id)`별 하나만 허용하는 논리 제약과 JOB 연결을 둔다. 완료 결과 채택·revision 증가·수신 기록·필요 Outbox도 같은 트랜잭션이다. 만료된 결과는 현재 후보에 반영하지 않는다.
 - 실패 근거는 기존 검증·문제 기록에 analysis_id, project_source_id, field_id, sample 참조 및 failure sidecar 참조, observed_at, expires_at과 필요 시 원문을 논리적으로 연결한다. 원문과 sidecar의 만료는 관찰 시각 기준 7일이며 늦게 수신했다고 연장하지 않는다. 신뢰할 수 없는 별도 레코드를 합치지 않는다. 보관·접근·삭제는 S3 저장 명세를 따른다.
 - 문제별 알림은 Control의 문제 기록과 OUTBOX에 프로젝트·출처·문제 종류·발생 회차·해결 여부, 발송 상태·시도 횟수·재시도 시각을 연결한다. 같은 미해결 문제의 중복 이벤트는 같은 발송 논리 키로 묶고 해결 후 재발생은 새 회차로 구분한다. 수집 결과와 발송 실패는 분리한다. 외부 공급자 응답 유실 시 정확히 한 번 발송은 보장하지 않는다.
+
+## 최근 작업 조회에 필요한 작업 시각
+
+- `JOB.created_at`은 작업 생성 시 확정되는 NOT NULL 시각이다. 대시보드 최근 작업은 프로젝트 소유 범위에서 `created_at DESC, job_id DESC`로 정렬한다. 출처별 최근 수집은 `JOB_PROJECT_RESULT`와 실제 collection JOB으로 프로젝트·출처를 먼저 제한하고 수집 회차별로 중복 없이 동일 정렬 후 최대 5건이다. 수동 요청 및 ingestion 자식 작업을 각각 별도 수집 회차로 세지 않는다. 시각·범위·정렬은 5건 조회를 위한 논리 계약이며 보존 기간 제한은 아니다.
+
+## 수집과 적재 작업의 공통 연결
+
+- 정기·수동·최초 수집 모두 실제 collection JOB과 참여 project_source_id별 JOB_PROJECT_RESULT를 수집 발행 시 기록한다. 적재 JOB은 parent_job_id로 collection JOB을 가리키고 자신의 JOB_PROJECT_RESULT로 project_source_id를 가리킨다. 사용자 요청 JOB은 JOB_EXECUTION_LINK로 참여 출처와 실제 collection을 연결한다. 동일 실행에 합류한 여러 요청은 한 collection을 공유한다.
+- Control은 같은 collection·project_source에 대한 적재 JOB이 중복 생성되지 않도록 해당 결과 행을 잠그고 기존 적재 JOB 확인·생성·대상 결과·Outbox를 같은 트랜잭션에서 기록한다. 기술적 재전달은 같은 job_id를 재사용한다. 실패 후 별도의 업무 재수집은 새 collection 회차다.
+- 전혀 변경이 없어 적재하지 않는 회차는 적재 JOB이 없다. NO_CHANGE 전 새 항목을 발견해 can_ingest=true이면 적재한다. 조회는 collection 자체 상태와 프로젝트 출처별 수집·적재 통합 결과를 구분한다.
+- 삭제 중 PROJECT는 소유자 목록에 삭제 상태 확인에 필요한 최소 정보만 남기고 일반 상세·데이터·변경은 차단한다. 완료 후 목록에서 제거한다. 기술 재처리용 최소 작업·receipt·Data 쓰기 차단 기록은 사용자 조회 여부와 별개로 재처리 가능 기간 유지한다.

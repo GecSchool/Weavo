@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ingestion.completed payload",
+  "description": "8.2·16.2",
+  "x-weavo-source": "../../../service-message-contracts.md §8.2",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "project_source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "mode": {
+      "enum": [
+        "APPEND",
+        "APPROVED_SOURCE_APPEND",
+        "PREPARE"
+      ]
+    },
+    "schema_version": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "connector_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "change_job_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string",
+      "examples": [
+        "SUCCEEDED",
+        "FAILED"
+      ]
+    },
+    "normal_extracted_record_count": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/nonnegative"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dataset_revision": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/nonnegative"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "project_id",
+    "project_source_id",
+    "source_id",
+    "mode",
+    "schema_version",
+    "connector_revision",
+    "change_job_id",
+    "status",
+    "normal_extracted_record_count",
+    "dataset_revision",
+    "error"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "SUCCEEDED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "normal_extracted_record_count": {
+            "$ref": "../common.schema.json#/definitions/nonnegative"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "PREPARE"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "dataset_revision": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "SUCCEEDED"
+          },
+          "mode": {
+            "enum": [
+              "APPEND",
+              "APPROVED_SOURCE_APPEND"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "dataset_revision": {
+            "$ref": "../common.schema.json#/definitions/nonnegative"
+          }
+        }
+      }
+    }
+  ]
+}

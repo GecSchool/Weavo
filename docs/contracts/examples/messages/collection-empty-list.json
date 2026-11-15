@@ -1,0 +1,20 @@
+{
+  "attempt_id": "43f5b110-f193-4157-91f2-1a16b8fb70d6",
+  "reporting_service": "CRAWLER",
+  "scope": "SOURCE",
+  "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+  "project_id": null,
+  "project_source_id": null,
+  "field_ids": [],
+  "schema_version": null,
+  "connector_revision": null,
+  "navigation_revision": 3,
+  "error": {
+    "code": "EMPTY_LIST",
+    "stage": "LIST_EXTRACTION",
+    "message": "반복 목록 항목을 찾지 못했습니다.",
+    "details": {
+      "observed_count": 0
+    }
+  }
+}

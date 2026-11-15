@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "collection.completed payload",
+  "description": "명세 7.3·16.2; 부분 성공과 오류 범위 대조는 작업 로직",
+  "x-weavo-source": "../../../service-message-contracts.md §7.3",
+  "type": "object",
+  "properties": {
+    "attempt_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "navigation_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "stop_reason": {
+      "enum": [
+        "TIME_LIMIT",
+        "END_OF_LIST",
+        "NO_CHANGE",
+        "NAVIGATION_FAILED",
+        "ACCESS_BLOCKED",
+        "TECHNICAL_FAILURE",
+        "EMPTY_LIST",
+        "CANCELLED"
+      ]
+    },
+    "started_at": {
+      "$ref": "../common.schema.json#/definitions/timestamp"
+    },
+    "finished_at": {
+      "$ref": "../common.schema.json#/definitions/timestamp"
+    },
+    "list_item_count": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/nonnegative"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "snapshot_ref": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/s3Ref"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "project_results": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/collectionProjectResult"
+      }
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "attempt_id",
+    "source_id",
+    "navigation_revision",
+    "status",
+    "stop_reason",
+    "started_at",
+    "finished_at",
+    "list_item_count",
+    "snapshot_ref",
+    "project_results",
+    "error"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "snapshot_ref": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "snapshot_ref"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project_results": {
+            "items": {
+              "properties": {
+                "can_ingest": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

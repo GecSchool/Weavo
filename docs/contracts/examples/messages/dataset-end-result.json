@@ -1,0 +1,18 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "change_job_id": "20549fac-0901-42bd-be1d-4acad93965bc",
+  "operation": "END_CHANGE",
+  "status": "SUCCEEDED",
+  "change_state": "CLOSED",
+  "disposition": "ABANDONED",
+  "committed_appends": [
+    {
+      "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+      "job_id": "bf521885-5d26-4c2c-9586-bf57b7d3d46f"
+    }
+  ],
+  "replace_committed": false,
+  "committed_deletions": [],
+  "dataset_revision": 20,
+  "error": null
+}

@@ -1,0 +1,394 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dataset.apply payload",
+  "description": "10.1~10.6·19.4·19.8: 대상집합과 DB 가드 검사는 서비스 책임",
+  "x-weavo-source": "../../../service-message-contracts.md §10.1",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "change_job_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "operation": {
+      "enum": [
+        "REPLACE",
+        "UPDATE_SOURCES",
+        "BEGIN_CHANGE",
+        "END_CHANGE",
+        "SET_CONNECTOR_REVISION",
+        "UPDATE_SCHEMA_METADATA"
+      ]
+    },
+    "expected_schema_version": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_schema_version": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "schema_version": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "project_source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "expected_connector_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "connector_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "guard_scope": {
+      "enum": [
+        "ACTIVE",
+        "CHANGE"
+      ]
+    },
+    "prepared_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "prepared_job_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        },
+        "required": [
+          "project_source_id",
+          "prepared_job_id"
+        ]
+      }
+    },
+    "final_project_source_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "delete_project_source_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "add_project_source_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "target_project_source_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "connector_revisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "connector_revision": {
+            "$ref": "../common.schema.json#/definitions/positive"
+          }
+        },
+        "required": [
+          "project_source_id",
+          "connector_revision"
+        ]
+      }
+    },
+    "target_connector_revisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "schema_version": {
+            "$ref": "../common.schema.json#/definitions/positive"
+          },
+          "connector_revision": {
+            "$ref": "../common.schema.json#/definitions/positive"
+          }
+        },
+        "required": [
+          "project_source_id",
+          "schema_version",
+          "connector_revision"
+        ]
+      }
+    },
+    "change_type": {
+      "enum": [
+        "INITIAL",
+        "SOURCE_CHANGE",
+        "SCHEMA_REVISION"
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "COMPLETED",
+        "ABANDONED"
+      ]
+    },
+    "expected_metadata_revision": {
+      "$ref": "../common.schema.json#/definitions/nonnegative"
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_order": {
+            "$ref": "../common.schema.json#/definitions/nonnegative"
+          }
+        },
+        "required": [
+          "field_id",
+          "display_name",
+          "description",
+          "display_order"
+        ]
+      }
+    }
+  },
+  "required": [
+    "project_id",
+    "operation"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "REPLACE"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "change_job_id",
+          "expected_schema_version",
+          "target_schema_version",
+          "prepared_results",
+          "final_project_source_ids",
+          "connector_revisions",
+          "delete_project_source_ids"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "UPDATE_SOURCES"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "change_job_id",
+          "expected_schema_version",
+          "target_schema_version",
+          "prepared_results",
+          "final_project_source_ids",
+          "delete_project_source_ids"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "BEGIN_CHANGE"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "change_job_id",
+          "change_type",
+          "expected_schema_version",
+          "target_schema_version",
+          "target_project_source_ids",
+          "add_project_source_ids",
+          "delete_project_source_ids",
+          "target_connector_revisions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "END_CHANGE"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "change_job_id",
+          "disposition"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "SET_CONNECTOR_REVISION"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "project_source_id",
+          "guard_scope",
+          "change_job_id",
+          "schema_version",
+          "expected_connector_revision",
+          "connector_revision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "UPDATE_SCHEMA_METADATA"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "change_job_id",
+          "expected_schema_version",
+          "expected_metadata_revision",
+          "fields"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "UPDATE_SOURCES"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "prepared_results": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "SET_CONNECTOR_REVISION"
+          },
+          "guard_scope": {
+            "const": "ACTIVE"
+          }
+        },
+        "required": [
+          "operation",
+          "guard_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "change_job_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "SET_CONNECTOR_REVISION"
+          },
+          "guard_scope": {
+            "const": "CHANGE"
+          }
+        },
+        "required": [
+          "operation",
+          "guard_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "change_job_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        }
+      }
+    }
+  ]
+}

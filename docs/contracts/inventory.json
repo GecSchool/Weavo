@@ -1,0 +1,351 @@
+{
+  "http": [
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/email-verifications"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/email-verifications/confirm"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/signup"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/login"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/refresh"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/logout"
+    },
+    {
+      "group": "Auth API",
+      "method": "GET",
+      "path": "/auth/v1/me"
+    },
+    {
+      "group": "Auth API",
+      "method": "PATCH",
+      "path": "/auth/v1/me"
+    },
+    {
+      "group": "Auth API",
+      "method": "DELETE",
+      "path": "/auth/v1/me"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/password-reset-requests"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/password-reset-requests/confirm"
+    },
+    {
+      "group": "Auth API",
+      "method": "POST",
+      "path": "/auth/v1/password-resets"
+    },
+    {
+      "group": "Auth API",
+      "method": "GET",
+      "path": "/auth/v1/csrf"
+    },
+    {
+      "group": "Auth API",
+      "method": "GET",
+      "path": "/auth/v1/jwks"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects/{p}"
+    },
+    {
+      "group": "Control API",
+      "method": "PATCH",
+      "path": "/control/v1/projects/{p}"
+    },
+    {
+      "group": "Control API",
+      "method": "DELETE",
+      "path": "/control/v1/projects/{p}"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects/{p}/sources"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/sources"
+    },
+    {
+      "group": "Control API",
+      "method": "DELETE",
+      "path": "/control/v1/projects/{p}/sources/{s}"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/analyses"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects/{p}/analyses/{a}"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/analyses/{a}/sources/{s}/retry"
+    },
+    {
+      "group": "Control API",
+      "method": "PATCH",
+      "path": "/control/v1/projects/{p}/analyses/{a}/candidate"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/analyses/{a}/approve"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/sources/{s}/recheck"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects/{p}/schema"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/analyses/{a}/cancel"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/collect"
+    },
+    {
+      "group": "Control API",
+      "method": "POST",
+      "path": "/control/v1/projects/{p}/sources/{s}/collect"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/projects/{p}/jobs"
+    },
+    {
+      "group": "Control API",
+      "method": "GET",
+      "path": "/control/v1/jobs/{j}"
+    },
+    {
+      "group": "Data API",
+      "method": "GET",
+      "path": "/api/projects/{p}/keys"
+    },
+    {
+      "group": "Data API",
+      "method": "POST",
+      "path": "/api/projects/{p}/keys"
+    },
+    {
+      "group": "Data API",
+      "method": "DELETE",
+      "path": "/api/projects/{p}/keys/{k}"
+    },
+    {
+      "group": "Data API",
+      "method": "GET",
+      "path": "/api/projects/{p}/v{v}/records"
+    },
+    {
+      "group": "Data API",
+      "method": "GET",
+      "path": "/api/projects/{p}/v{v}/records/{r}"
+    },
+    {
+      "group": "내부 API",
+      "method": "GET",
+      "path": "/internal/v1/projects/{p}/access"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/project-sources/latest-records:query"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/project-schemas:query"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/project-sources:resolve"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/jobs/{job_id}/attempts:claim"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/jobs/{job_id}/attempts/{attempt_id}:heartbeat"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/source-data/deletion-preview",
+      "section": "16.1"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/account-deletions",
+      "section": "16.5"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/account-deletions/{job_id}/complete",
+      "section": "16.5"
+    },
+    {
+      "group": "내부 API",
+      "method": "GET",
+      "path": "/internal/v1/accounts/{user_id}/access-status",
+      "section": "19.5"
+    },
+    {
+      "group": "내부 API",
+      "method": "GET",
+      "path": "/internal/v1/projects/{project_id}/source-mappings",
+      "section": "19.6"
+    },
+    {
+      "group": "내부 API",
+      "method": "GET",
+      "path": "/internal/v1/projects/{project_id}/schemas/{schema_version}/prepared",
+      "section": "19.3"
+    }
+  ],
+  "messages": [
+    {
+      "name": "collection.schedule.triggered",
+      "section": "7.1",
+      "producer": "scheduler",
+      "consumer": "control"
+    },
+    {
+      "name": "analysis.execute",
+      "section": "6.1",
+      "producer": "control",
+      "consumer": "analysis"
+    },
+    {
+      "name": "analysis.completed",
+      "section": "6.2",
+      "producer": "analysis",
+      "consumer": "control"
+    },
+    {
+      "name": "collection.execute",
+      "section": "7.2",
+      "producer": "control",
+      "consumer": "crawler"
+    },
+    {
+      "name": "collection.completed",
+      "section": "7.3",
+      "producer": "crawler",
+      "consumer": "control"
+    },
+    {
+      "name": "schema.prepare",
+      "section": "18.1",
+      "producer": "control",
+      "consumer": "ingestion"
+    },
+    {
+      "name": "schema.prepared",
+      "section": "18.1",
+      "producer": "ingestion",
+      "consumer": "control"
+    },
+    {
+      "name": "ingestion.execute",
+      "section": "8.1",
+      "producer": "control",
+      "consumer": "ingestion"
+    },
+    {
+      "name": "ingestion.completed",
+      "section": "8.2",
+      "producer": "ingestion",
+      "consumer": "control"
+    },
+    {
+      "name": "job.issue.detected",
+      "section": "9.1",
+      "producer": "crawler/ingestion",
+      "consumer": "control"
+    },
+    {
+      "name": "dataset.apply",
+      "section": "10.1",
+      "producer": "control",
+      "consumer": "ingestion"
+    },
+    {
+      "name": "dataset.applied",
+      "section": "10.2",
+      "producer": "ingestion",
+      "consumer": "control"
+    },
+    {
+      "name": "project-data.delete",
+      "section": "16.4",
+      "producer": "control",
+      "consumer": "ingestion"
+    },
+    {
+      "name": "project-data.deleted",
+      "section": "16.4",
+      "producer": "ingestion",
+      "consumer": "control"
+    }
+  ]
+}

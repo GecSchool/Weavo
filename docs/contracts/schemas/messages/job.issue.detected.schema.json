@@ -1,0 +1,194 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "job.issue.detected payload",
+  "description": "9.1·16.3 Crawler attempt 필수, Ingestion 생략",
+  "x-weavo-source": "../../../service-message-contracts.md §9.1",
+  "type": "object",
+  "properties": {
+    "attempt_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "reporting_service": {
+      "enum": [
+        "CRAWLER",
+        "INGESTION"
+      ]
+    },
+    "scope": {
+      "enum": [
+        "SOURCE",
+        "PROJECT_SOURCE"
+      ]
+    },
+    "source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "project_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "project_source_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "field_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "schema_version": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "connector_revision": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "navigation_revision": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "$ref": "../common.schema.json#/definitions/error"
+    }
+  },
+  "required": [
+    "reporting_service",
+    "scope",
+    "source_id",
+    "project_id",
+    "project_source_id",
+    "field_ids",
+    "schema_version",
+    "connector_revision",
+    "error"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "reporting_service": {
+            "const": "CRAWLER"
+          }
+        },
+        "required": [
+          "reporting_service"
+        ]
+      },
+      "then": {
+        "required": [
+          "attempt_id",
+          "navigation_revision"
+        ],
+        "properties": {
+          "navigation_revision": {
+            "$ref": "../common.schema.json#/definitions/positive"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reporting_service": {
+            "const": "INGESTION"
+          }
+        },
+        "required": [
+          "reporting_service"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "attempt_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "SOURCE"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project_id": {
+            "type": "null"
+          },
+          "project_source_id": {
+            "type": "null"
+          },
+          "connector_revision": {
+            "type": "null"
+          },
+          "field_ids": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "PROJECT_SOURCE"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "connector_revision": {
+            "$ref": "../common.schema.json#/definitions/positive"
+          }
+        }
+      }
+    }
+  ]
+}

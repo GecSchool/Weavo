@@ -1,0 +1,18 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+  "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+  "mode": "APPEND",
+  "schema_version": 1,
+  "connector_revision": 2,
+  "change_job_id": null,
+  "status": "FAILED",
+  "normal_extracted_record_count": null,
+  "dataset_revision": null,
+  "error": {
+    "code": "SNAPSHOT_READ_FAILED",
+    "stage": "SNAPSHOT_READ",
+    "message": "수집 스냅샷을 읽지 못했습니다.",
+    "details": {}
+  }
+}

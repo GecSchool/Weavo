@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "collection.schedule.triggered payload",
+  "description": "7.1 실제 실행 신호. 등록 템플릿의 context key는 실행 시 timestamp로 치환됨. 공통 event envelope 아님",
+  "x-weavo-source": "../../../service-message-contracts.md §7.1",
+  "type": "object",
+  "properties": {
+    "format_version": {
+      "const": 1
+    },
+    "event_type": {
+      "const": "collection.schedule.triggered"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        "scheduled_at": {
+          "$ref": "../common.schema.json#/definitions/timestamp"
+        }
+      },
+      "required": [
+        "source_id",
+        "scheduled_at"
+      ]
+    }
+  },
+  "required": [
+    "format_version",
+    "event_type",
+    "payload"
+  ]
+}

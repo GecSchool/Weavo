@@ -32,7 +32,7 @@ Analysis는 Control의 job_id에 대해 attempt_id로 선점하고 lease를 갱�
 5. 출처별 필드 후보·샘플값·선택자·이동 후보를 S3에 임시 저장한다. Analysis는 성공한 출처의 중간 결과를 읽어 **[E]** LLM에 공통 필드와 출처별 매핑을 추천받는다. 출처별 중간 결과와 검증 샘플은 별도 객체이며 분석 DOM 원본은 보관하지 않는다. 본문·경로·정리 조건은 [S3 저장 명세](s3-storage-contract.md)를 따른다. 최초 분석에서 성공한 출처가 하나 이상이면 그 결과로 공동 스키마 후보를 추천하고 실패 출처는 재시도·제외할 수 있다. 모든 출처가 실패하면 후보를 승인할 수 없다. 재시도 결과는 사용자 수정을 보존하고 필요한 검증을 수행한다.
 6. 후보에 대해 **[G]** 목록의 HTTP 추출·탐색 가능 여부를 내부 확인한다. 목록은 가능하면 HTTP, 그렇지 않으면 브라우저를 사용하고 상세는 항상 브라우저로 처리한다. 별도의 HTTP 결과 화면은 두지 않는다.
 7. Analysis는 사용자 승인 전에 analysis_id·후보 revision·프로젝트·출처로 구분되는 검증 샘플값을 S3에 저장하고 **[H]** 후보·검증 결과와 샘플 식별정보를 Control에 보낸다. 저장 실패는 승인 가능한 성공으로 처리하지 않는다.
-8. Control은 후보·검증 상태를 관리하고 S3에서 샘플을 읽어 사용자에게 스키마·원천별 필드 위치·CSS·이동 결과와 함께 제공한다.
+8. Control은 sample_ref로 S3 샘플의 소유 범위와 실제 생성 revision을 확인해 sample_revision으로 기록한다. 후보·검증 상태를 관리하고 사용자에게 스키마·원천별 필드 위치·CSS·이동 결과와 샘플을 함께 제공한다.
 9. 사용자가 후보를 수정하면 Control이 새 revision에 반영하고 필요한 경우 **[F]** 영향 범위를 재검증한다. 재검증이 필요한 경우 승인 전 HTTP 확인과 해당 revision의 샘플 저장을 포함한다. 추출에 영향 없는 수정은 기존 검증과 실제 샘플 참조·생성 revision을 승계할 수 있다. 필요 없는 재검증의 처리 등 상세 기준은 메시지 계약을 확인한다.
 10. Control은 승인 요청의 revision이 현재 후보 및 검증 성공 revision과 일치하는지 확인한다. 승인되면 공유 출처 연결을 확정하고 `schema.prepare`/`schema.prepared`로 Data DB에 v1 스키마를 준비한 뒤 출처별 최초 수집을 조정한다.
 
@@ -103,7 +103,7 @@ Analysis는 Control의 job_id에 대해 attempt_id로 선점하고 lease를 갱�
 - 파서는 메시지 명세의 `parser.code` Java 함수 본문을 사용한다. Analysis·Crawler·Ingestion은 공통 Java 파서 모듈을 사용하고 생성 코드는 별도 격리 없이 각 서비스 JVM에서 실행한다. 파일·네트워크 접근, 무한 반복과 메모리 고갈이 해당 서비스에 영향을 줄 수 있으며 별도 샌드박스나 자원 강제 제한은 보장하지 않는다. 공통 모듈의 세 서비스 결과 일치는 구현 시 검증한다. 별도 가공이 필요 없으면 parser는 null이다.
 - 비교·수집을 계속할 수 없는 규칙 관련 실패는 자동 복구한다. 복구 후보 검증은 최초 포함 최대 3회이며 세부 실패 판정은 구현 검증 대상이다.
 
-## 8. 최신 연결 계약
+## 8. 서비스 연결 계약
 
 - 공동 후보의 필드별 recommendation_reason을 analysis.completed에 포함한다. 웹에는 Control이 현재 후보·S3 샘플을 반환한다. Analysis가 Control의 후보를 직접 덮어쓰지 않는다.
 - 상세 후보는 첫 목록에서 최대 3개를 브라우저로 검증한다. 선택한 규칙에 대한 변환은 각 서비스 JVM의 공통 Java 모듈에서 수행하며 추가적인 공백 가공은 승인 parser.code가 있는 경우에만 수행한다.
@@ -129,7 +129,7 @@ Analysis가 스키마 유지 커넥터를 검증하면 Control은 해당 출처�
 - 마지막 출처 삭제 후 공개 스키마가 있으면 기존 스키마 기준 ADD_SOURCE를 사용한다. 공개 전 빈 프로젝트에는 보관된 승인 v1 후보를 기준으로 새 출처를 분석하고 승인 후 새 INITIAL로 수집한다. 사용자 정의 스키마 구조가 달라지면 다시 승인받는다.
 
 
-## 실행 계약 추가 사항
+## 실행 및 결과 채택
 
 최초 추천 결과는 Control이 description=null과 추천 배열 순서의 display_order를 한 번 초기화한다. Analysis 재시도는 대상 출처 매핑·샘플만 교체하며 공통 필드와 다른 출처의 사용자 편집은 보존한다. 목록 NONE은 첫 화면만 확인한다. 상세는 BROWSER이며 CURRENT_TAB/NEW_TAB/MODAL과 각각 HISTORY_BACK/CLOSE_TAB/CLOSE 복귀 및 대상 화면의 wait_selector를 실제 실행 검증한다. 예상과 다른 탭·모달이나 대기 실패는 성공이 아니다.
 
@@ -143,3 +143,8 @@ Analysis는 item_selector로 각 목록 항목이 분리되고 필드별 상세 
 ### 재시도·신규 출처의 후보 경계
 
 Control은 동일 분석·출처의 진행 중 재시도에 기존 job을 반환한다. 유효 결과는 요청 revision이 현재와 같을 때만 대상 출처에 병합하고 후보 revision을 증가시킨다. 필요한 검증은 새 revision에 연결하며 나머지 출처의 유효 검증은 영향이 없는 경우에만 승계한다. 오래된 결과는 반영하지 않는다. 신규 출처는 list_url·analysis_id·expected_revision으로 기존 편집 후보에 원자 연결된 뒤 그 새 revision의 ADD_SOURCE로 실행한다. 상세 HTTP와 원자 처리 조건은 메시지 명세 20.9를 따른다.
+
+### 전송 형식과 추출 검증
+
+- Analysis는 필드 커넥터에서 `TEXT`의 `attribute=null` 및 `ATTRIBUTE`의 비어 있지 않은 속성 이름을 검증한다. CSS 세부 지원과 세 서비스 결과 일치는 실행 환경에서 확인한다.
+- `REVALIDATE`는 영향 출처 `sources`, 수정 후보 `current_candidate`와 revision을 사용한다. `RECHECK_SOURCE`는 단일 대상 `sources`, 승인 설정 `current_candidate`, `failure_context`를 사용한다. 공통 형식과 정확한 조건은 메시지 명세 21.1을 따른다.

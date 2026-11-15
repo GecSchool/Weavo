@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "schema.prepare command",
+  "allOf": [
+    {
+      "$ref": "../common.schema.json#/definitions/commandEnvelope"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command_type": {
+          "const": "schema.prepare"
+        },
+        "payload": {
+          "$ref": "schema.prepare.schema.json"
+        }
+      },
+      "required": [
+        "command_type",
+        "payload"
+      ]
+    }
+  ]
+}

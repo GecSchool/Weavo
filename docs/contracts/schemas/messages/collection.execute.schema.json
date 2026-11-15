@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "collection.execute payload",
+  "description": "명세 7.2: FULL 하나라도 최대 300초, 모두 반복 최대 60초",
+  "x-weavo-source": "../../../service-message-contracts.md §7.2",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "execution_reason": {
+      "enum": [
+        "INITIAL",
+        "SCHEDULED",
+        "MANUAL",
+        "REVISION",
+        "RECOVERY"
+      ]
+    },
+    "max_duration_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "navigation_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "navigation": {
+      "$ref": "../common.schema.json#/definitions/navigation"
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/collectionProject"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "source_id",
+    "execution_reason",
+    "max_duration_seconds",
+    "navigation_revision",
+    "navigation",
+    "projects"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "projects": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "collection_mode": {
+                    "const": "FULL"
+                  }
+                },
+                "required": [
+                  "collection_mode"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "projects"
+        ]
+      },
+      "then": {
+        "properties": {
+          "max_duration_seconds": {
+            "maximum": 60
+          }
+        }
+      }
+    }
+  ]
+}

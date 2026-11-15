@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "job.issue.detected event",
+  "allOf": [
+    {
+      "$ref": "../common.schema.json#/definitions/eventEnvelope"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "job.issue.detected"
+        },
+        "payload": {
+          "$ref": "job.issue.detected.schema.json"
+        }
+      },
+      "required": [
+        "event_type",
+        "payload"
+      ]
+    }
+  ]
+}

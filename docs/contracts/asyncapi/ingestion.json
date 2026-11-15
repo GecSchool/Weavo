@@ -1,0 +1,261 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Weavo Ingestion SQS 계약 초안",
+    "version": "0.1.0",
+    "description": "이 서비스 관점의 send/receive. 주소는 로컬 환경 큐 이름; 실제 리소스·운영 주소는 환경 설정. 구현 완료나 외부 공개를 뜻하지 않는다."
+  },
+  "defaultContentType": "application/json",
+  "channels": {
+    "ingestionJobs": {
+      "address": "ingestion-jobs",
+      "messages": {
+        "schema_prepare": {
+          "$ref": "#/components/messages/schema_prepare"
+        },
+        "ingestion_execute": {
+          "$ref": "#/components/messages/ingestion_execute"
+        },
+        "dataset_apply": {
+          "$ref": "#/components/messages/dataset_apply"
+        },
+        "project_data_delete": {
+          "$ref": "#/components/messages/project_data_delete"
+        }
+      }
+    },
+    "controlResults": {
+      "address": "control-results",
+      "messages": {
+        "schema_prepared": {
+          "$ref": "#/components/messages/schema_prepared"
+        },
+        "ingestion_completed": {
+          "$ref": "#/components/messages/ingestion_completed"
+        },
+        "job_issue_detected": {
+          "$ref": "#/components/messages/job_issue_detected"
+        },
+        "dataset_applied": {
+          "$ref": "#/components/messages/dataset_applied"
+        },
+        "project_data_deleted": {
+          "$ref": "#/components/messages/project_data_deleted"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receive_ingestionJobs_schema_prepare": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/ingestionJobs"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/ingestionJobs/messages/schema_prepare"
+        }
+      ],
+      "description": "control → ingestion. 메시지 명세 18.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "receive_ingestionJobs_ingestion_execute": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/ingestionJobs"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/ingestionJobs/messages/ingestion_execute"
+        }
+      ],
+      "description": "control → ingestion. 메시지 명세 8.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "receive_ingestionJobs_dataset_apply": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/ingestionJobs"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/ingestionJobs/messages/dataset_apply"
+        }
+      ],
+      "description": "control → ingestion. 메시지 명세 10.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "receive_ingestionJobs_project_data_delete": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/ingestionJobs"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/ingestionJobs/messages/project_data_delete"
+        }
+      ],
+      "description": "control → ingestion. 메시지 명세 16.4; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_schema_prepared": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/schema_prepared"
+        }
+      ],
+      "description": "ingestion → control. 메시지 명세 18.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_ingestion_completed": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/ingestion_completed"
+        }
+      ],
+      "description": "ingestion → control. 메시지 명세 8.2; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_job_issue_detected": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/job_issue_detected"
+        }
+      ],
+      "description": "crawler/ingestion → control. 메시지 명세 9.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_dataset_applied": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/dataset_applied"
+        }
+      ],
+      "description": "ingestion → control. 메시지 명세 10.2; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_project_data_deleted": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/project_data_deleted"
+        }
+      ],
+      "description": "ingestion → control. 메시지 명세 16.4; 형식 및 업무 조건은 원문 참조."
+    }
+  },
+  "components": {
+    "messages": {
+      "schema_prepare": {
+        "name": "schema.prepare",
+        "title": "schema.prepare",
+        "description": "원문 service-message-contracts.md 18.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/schema.prepare.envelope.schema.json"
+          }
+        }
+      },
+      "ingestion_execute": {
+        "name": "ingestion.execute",
+        "title": "ingestion.execute",
+        "description": "원문 service-message-contracts.md 8.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/ingestion.execute.envelope.schema.json"
+          }
+        }
+      },
+      "dataset_apply": {
+        "name": "dataset.apply",
+        "title": "dataset.apply",
+        "description": "원문 service-message-contracts.md 10.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/dataset.apply.envelope.schema.json"
+          }
+        }
+      },
+      "project_data_delete": {
+        "name": "project-data.delete",
+        "title": "project-data.delete",
+        "description": "원문 service-message-contracts.md 16.4절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/project-data.delete.envelope.schema.json"
+          }
+        }
+      },
+      "schema_prepared": {
+        "name": "schema.prepared",
+        "title": "schema.prepared",
+        "description": "원문 service-message-contracts.md 18.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/schema.prepared.envelope.schema.json"
+          }
+        }
+      },
+      "ingestion_completed": {
+        "name": "ingestion.completed",
+        "title": "ingestion.completed",
+        "description": "원문 service-message-contracts.md 8.2절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/ingestion.completed.envelope.schema.json"
+          }
+        }
+      },
+      "job_issue_detected": {
+        "name": "job.issue.detected",
+        "title": "job.issue.detected",
+        "description": "원문 service-message-contracts.md 9.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/job.issue.detected.envelope.schema.json"
+          }
+        }
+      },
+      "dataset_applied": {
+        "name": "dataset.applied",
+        "title": "dataset.applied",
+        "description": "원문 service-message-contracts.md 10.2절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/dataset.applied.envelope.schema.json"
+          }
+        }
+      },
+      "project_data_deleted": {
+        "name": "project-data.deleted",
+        "title": "project-data.deleted",
+        "description": "원문 service-message-contracts.md 16.4절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/project-data.deleted.envelope.schema.json"
+          }
+        }
+      }
+    }
+  }
+}

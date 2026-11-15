@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "collection.schedule.triggered 등록 템플릿",
+  "description": "7.1 Scheduler Input 템플릿. 실제 수신 시각은 context key가 RFC3339 UTC로 치환된다.",
+  "type": "object",
+  "properties": {
+    "format_version": {
+      "const": 1
+    },
+    "event_type": {
+      "const": "collection.schedule.triggered"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        "scheduled_at": {
+          "const": "<aws.scheduler.scheduled-time>"
+        }
+      },
+      "required": [
+        "source_id",
+        "scheduled_at"
+      ]
+    }
+  },
+  "required": [
+    "format_version",
+    "event_type",
+    "payload"
+  ]
+}

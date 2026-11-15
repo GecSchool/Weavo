@@ -1,6 +1,7 @@
 # Weavo 작업 지침
 
 - 코드 표현과 검증은 팀 코드 컨벤션 최종본을 따른다. 기능 및 데이터 계약은 `docs/spec-decision-log.md`, `docs/service-message-contracts.md`, `docs/s3-storage-contract.md`를 확인한다.
+- 브랜치·커밋·PR 규칙은 `docs/git-conventions.md`를 따른다.
 - 서비스별 책임과 파일 배치는 각 서비스 README와 하위 AGENTS.md를 따른다. 필요하지 않은 계층이나 클래스를 만들지 않는다.
 - 기존 사용자 변경을 보존하고 변경한 범위에 적절한 검사와 테스트를 실행한다. 실행하지 못한 검사는 이유와 함께 보고한다.
 - 비밀값, 토큰, 쿠키, API 키 원문과 전체 HTML을 로그나 커밋에 넣지 않는다.

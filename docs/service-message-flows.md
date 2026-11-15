@@ -117,10 +117,10 @@
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
 | 1 | 웹 → Control / HTTP PATCH /control/v1/projects/{p}/analyses/{a}/candidate | expected_revision, fields, source_rules, excluded_project_source_ids | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 조건부 DB 갱신으로 revision 증가. 동시 수정 충돌은 409 |
-| 2a | Control → Analysis / SQS analysis.execute | purpose=REVALIDATE, 현재 후보, 영향 출처, 새 revision | 6.1 — 메시지 형식 | 이동·추출·파싱·타입·HTTP 가능 여부를 검증 |
+| 2a | Control → Analysis / SQS analysis.execute | purpose=REVALIDATE, current_candidate, sources, 새 revision | 6.1 — 메시지 형식 | 이동·추출·파싱·타입·HTTP 가능 여부를 검증 |
 | 2b | Control 내부 / 검증 승계 | 재검증이 불필요한 변경 | 11, 15.3 — 내부 처리; 전송 JSON 없음 | 새 후보에 기존 검증을 승계하고 sample_revision·sample_ref와 승계 근거 유지. Analysis 메시지 없음 |
 | 3 | Analysis → S3 / 객체 저장 | 새 revision의 검증 샘플 | 1.3, 15.3 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답은 메시지 명세 19.9 | 이전 샘플과 구분. 저장 실패는 검증 성공으로 반영하지 않음 |
-| 4 | Analysis → Control / SQS analysis.completed | 목표 revision, validation_status, source_results | 6.2, 16.2 — 메시지 형식 | 현재 revision 일치 시 검증 결과·sample_revision·sample_ref 반영 |
+| 4 | Analysis → Control / SQS analysis.completed | 목표 revision, validation_status, source_results | 6.2, 16.2 — 메시지 형식 | sample_ref의 S3 본문·소유 범위와 실제 revision 확인 후 현재 revision 일치 시 반영 |
 | 5 | 웹 ↔ Control·S3 / HTTP 분석 조회 / Control의 S3 조회 | 현재 후보·샘플·출처별 실패·match_count | 1.3, 15.3 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답은 메시지 명세 19.9 | 사용자에게 수정 결과 표시 |
 | 6 | 웹 → Control / HTTP POST /control/v1/projects/{p}/analyses/{a}/approve | candidate_revision | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 후보·검증 revision과 승인 조건을 원자적으로 확인 |
 | 7a | Control → 웹 / HTTP 409 또는 422 | revision 충돌 또는 검증 미완료·실패 | 12.2, 15.3, 1.4 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 승인하지 않고 원인 표시. 수정·검증 흐름으로 복귀 |
@@ -294,7 +294,7 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 | 1b | Ingestion → Control / job.issue.detected, code=EMPTY_EXTRACTION | scope=PROJECT_SOURCE, 정상 추출 0건 | 9.1, 16.3, 1.4 — 메시지 형식 | 즉시 대상 프로젝트 출처 문제 표시 |
 | 2 | Control → 웹·이메일 / 대시보드 조회 응답·설정 시 이메일 | 0건 대상·원인 | 12.2, 15.18 — 상황만 명시; 공급자 전송 형식 미정 | 리비전이면 전체 적용 보류. 같은 문제 중복 이메일 제한 |
 | 3a | 웹 → Control / HTTP POST /control/v1/projects/{p}/sources/{s}/recheck | 해당 project_source_id | 12.2, 15.10 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 새 분석·작업 생성. 202 analysis_id·job_id 반환 |
-| 4a | Control → Analysis / SQS analysis.execute | purpose=RECHECK_SOURCE, 현재 설정·실패 정보 | 6.1, 16.3, 1.4 — 메시지 형식 | 해당 출처 재방문·추출·규칙 검증 |
+| 4a | Control → Analysis / SQS analysis.execute | purpose=RECHECK_SOURCE, 단일 sources, current_candidate, failure_context | 6.1, 16.3, 1.4 — 메시지 형식 | 해당 출처 재방문·추출·규칙 검증 |
 | 5a | Analysis → Control / SQS analysis.completed | 정상 검증 또는 실패·0건 | 6.2, 16.2, 1.4 — 메시지 형식 | 성공 시 기존 승인 설정에 따라 10.7의 새 변경 또는 15.8~9 복구로 연결. 실패면 확인 필요 유지 |
 | 3b | 웹 → Control / HTTP 출처 삭제 후보·approve | analysis_id, expected_revision, candidate_revision | 12.2, 15.10 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 삭제 영향 확인과 최종 승인 후 15.12 진행 |
 | 6 | Crawler/Ingestion → Control / 완료 이벤트 | 현재 작업의 최종 결과 | 15.10 — 상황·처리 참고; 독립 전송 형식 없음 | 중간 0건 보고와 같은 문제를 중복 처리하지 않음 |
@@ -336,7 +336,7 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
-| 1 | 웹 → Control / HTTP DELETE /control/v1/projects/{p}/sources/{s} | analysis_id, expected_revision | 12.2, 15.12 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 삭제 후보만 기록. 삭제 출처 전용 필드도 자동으로 스키마에서 지우지 않음 |
+| 1 | 웹 → Control / HTTP DELETE /control/v1/projects/{p}/sources/{s} | query: analysis_id, expected_revision | 12.2, 15.12 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 삭제 후보만 기록. 삭제 출처 전용 필드도 자동으로 스키마에서 지우지 않음 |
 | 2 | Control → Ingestion / 내부 HTTP deletion-preview | project_id, project_source_id | 16.1 — 내부 HTTP 형식 | 삭제 대상 건수 조회. 이 시점에는 레코드 삭제 안 함 |
 | 3a | Ingestion → Control / HTTP 200 | project_source_id, record_count | 16.1 — 내부 HTTP 형식 | Control이 최종 설정과 삭제 영향 표시 |
 | 3b | Ingestion → Control / HTTP 오류 | 조회 실패 error | 16.1, 1.4 — 내부 HTTP 형식 | 0건 삭제로 오인하지 않고 표시·재조회. 영향 정보 확인 전 승인을 보류한다 |
@@ -437,14 +437,14 @@ Data 측 삭제 범위에는 API 키, 공개·비공개 스키마 정의와 필�
 
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
-| 1 | 웹 → Control / HTTP DELETE /control/v1/projects/{p} | confirm=true, 소유권 | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 프로젝트 삭제 작업 생성. 계정 삭제의 자식 작업으로도 재사용 |
-| 2 | Control → 웹 / HTTP 202 | job_id | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 삭제 진행 조회. 이 응답을 데이터 삭제 완료로 표시하지 않음 |
+| 1 | 웹 → Control / HTTP DELETE /control/v1/projects/{p} | query: confirm=true, 소유권 | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 프로젝트 삭제 작업 생성. 계정 삭제의 자식 작업으로도 재사용 |
+| 2 | Control → 웹 / HTTP 202 | job_id | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 삭제 접수 안내 후 목록으로 이동. 이 응답을 데이터 삭제 완료로 표시하지 않음 |
 | 3 | Control 내부 / 실행·설정 변경 차단 | project_id, 삭제 작업 | 11 — 내부 처리; 전송 JSON 없음 | 새 분석·수집·적재·변경 적용 발행 차단. 기존 실행의 늦은 결과도 적용 대상에서 제외 |
 | 4 | Control → Ingestion / SQS project-data.delete | project_id | 16.4 — 메시지 형식 | 활성 데이터·비활성 준비 데이터·관련 데이터 메타데이터 전체 정리 |
 | 5a | Ingestion → Control / SQS project-data.deleted | status=SUCCEEDED, project_id | 16.4 — 메시지 형식 | Control이 프로젝트 설정·출처 연결·분석 후보 정리 조정. API 키는 Data DB 삭제 범위에 포함 |
 | 5b | Ingestion → Control / SQS project-data.deleted | status=FAILED, error | 16.4, 1.4 — 메시지 형식 | 삭제 완료로 표시하지 않음. 기술 재처리·최종 실패 안내. 대상 프로젝트는 삭제 중 상태 유지 |
 | 6 | Control → Redis·S3·Scheduler / 캐시 무효화·객체/일정 정리 | 프로젝트 전용 객체·공유 결과·큐 재처리 기간 | 1.3, 15.16; S3 저장 명세 3.4·4.4~4.5 | 다른 프로젝트는 유지하고 공유 manifest의 삭제 대상 참조를 교체. 기존 결과·대기/DLQ 메시지는 재처리 종료 후 정리 |
-| 7 | 웹 ↔ Control / HTTP 작업 조회 | 삭제 작업 job_id | 12.2, 15.16 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 전용 객체·공유 결과·대기/DLQ 정리를 포함해 전체 필수 정리 후 완료. 큐 보존 기간에 따라 지연 가능 |
+| 7 | 웹 ↔ Control / HTTP 프로젝트 목록 | 삭제 중·확인 필요 최소 상태 | 12.2, 15.16 — 상황만 명시 | 필수 정리가 끝나면 목록에서 제거. 삭제 완료 후 별도 사용자 작업 조회 없음 |
 
 ### 3.17 회원 탈퇴와 소유 프로젝트 정리
 
@@ -543,7 +543,7 @@ Data 측 삭제 범위에는 API 키, 공개·비공개 스키마 정의와 필�
 
 위 항목에 업무상 전송이 필요하다는 사실과 구체 JSON 형식이 이미 확정되었다는 사실을 구분한다. 현재 파일은 흐름과 형식 위치를 연결하는 문서이며 새 큐·메시지 종류·API를 추가로 확정하지 않는다.
 
-## 5. 확정한 연결 세부
+## 5. 서비스 연결 세부
 
 이 절은 3.1~3.20의 순서에 적용하며 실제 payload·내부 HTTP 형식은 메시지 명세 18절이다. 승인 변경의 BEGIN_CHANGE·END_CHANGE 형식과 순서는 메시지 명세 10.5를 따른다.
 
@@ -569,7 +569,7 @@ Control은 프로젝트마다 승인 변경을 하나만 진행한다. 기존 da
 7. 동일 job의 REPLACE 요청은 원래 요청 envelope·job_id·payload로 재전달한다. 원래 event_id는 결과 이벤트 재발행 시에만 유지한다. 최초 분석 생성은 프로젝트 행 잠금과 JOB·Outbox 트랜잭션으로 중복을 막고 도메인 요청은 Redis 임대·간격으로 조정한다. 상세 19.7.
 
 
-## 7. 재점검 실행 경계
+## 7. 후보·수집·공개 경계
 
 후보 GET은 이동 규칙·제외 목록·검증/샘플 revision을 반환하고 navigation 수정은 출처별 전체 교체다. 최초 필드 표시 정보는 Control이 후보 채택 때 초기화한다. 공개 전 복구는 준비 정의와 S3 승인 샘플, 공개 후는 공개 스키마와 DB 최신값을 전달하며 CHANGE/ACTIVE는 각 대상 규칙에 맞게 선택한다.
 
@@ -578,7 +578,7 @@ Control은 프로젝트마다 승인 변경을 하나만 진행한다. 기존 da
 상세 브라우저 이동은 필드별 목록 항목 기준 open.selector와 상세 DOM의 값 추출 selector를 구분하며 CURRENT_TAB/NEW_TAB/MODAL과 같은 대상의 대기·복귀를 사용한다. Data 공개 스키마·레코드는 동일 DB 스냅샷에서 읽고 API 키 Redis 제한 장애는 503이다. 전체 payload 및 내부 HTTP 응답은 메시지 명세 20절이다.
 
 
-## 7. 추가 확정 실행 경계
+## 7.1 파서와 정리 경계
 
 Analysis·Crawler·Ingestion은 같은 공통 파서 모듈을 사용하고 생성 Java 코드를 별도 격리 없이 각 서비스 JVM에서 실행한다. 코드가 서비스 권한과 자원을 공유하므로 무한 반복·메모리 고갈·파일 및 네트워크 접근이 해당 서비스에 영향을 줄 수 있으며 별도 강제 격리는 보장하지 않는다. 파서 사용자 편집 UI는 없다.
 
@@ -586,9 +586,29 @@ Analysis·Crawler·Ingestion은 같은 공통 파서 모듈을 사용하고 생�
 
 문제 이메일 발송 실패는 수집·적재를 되돌리지 않고 제한 재시도한다. 같은 미해결 문제의 발송 상태를 보관한다. 공급자 응답 유실 시 중복 가능성이 있으며 지원하는 경우 동일 발송 식별자를 재사용한다. receipt·이벤트 수신 기록·Outbox·S3 결과는 관련 SQS·DLQ 재처리 가능 기간 이상 유지한다. 구체 수치는 운영 설정이다.
 
-## 8. 상태·후보 경계 보완
+## 8. 상태·후보 경계
 
 - 분석 진행 화면은 전체 진행 상태만 표시한다. 분석 완료 이벤트 `SUCCEEDED`·`PARTIAL`은 후보가 있으면 분석 GET의 `READY`로 매핑하고 출처별 결과를 함께 반환한다. 실패·취소는 HTTP `FAILED`·`CANCELLED`다. 개별 출처의 중간 진행 이벤트는 추가하지 않는다.
 - 같은 분석·출처의 진행 중 retry는 기존 job_id를 반환한다. 결과는 요청 revision이 현 후보와 같을 때만 병합하고 후보 revision 증가 및 필요한 재검증을 원자적으로 기록한다. stale 결과는 버리고 최신 후보로 다시 요청한다.
 - 기존 후보 출처 추가는 `POST /projects/{p}/sources`에 list_url·analysis_id·expected_revision을 전달한다. Control은 출처 연결·revision 증가·ADD_SOURCE job과 Outbox를 함께 기록하고 201에 project_source_id·analysis_id·candidate_revision·job_id를 반환한다. 다른 변경이 선행되면 409다. 메시지 명세 20.9를 따른다.
 - 초기화 `202`는 계정 유무와 개별 발송 결과를 구별하지 않는다. 가입·초기화 증명의 소비 이후 결과가 불확실하면 인증부터 다시 시작하고 가입은 로그인도 안내한다. 탈퇴 접수 202는 Control 접수 뒤 바로 반환하며 비동기 정리는 계속된다.
+
+## 샘플·오류·서비스 인증
+
+- 샘플 결과: Analysis가 sample_ref를 반환하면 Control은 S3 본문에서 생성 revision·소유 범위를 확인해 sample_revision과 함께 저장한다. 승계된 검증은 기존 sample_ref·sample_revision과 승계 근거를 유지한다.
+- HTTP 오류: 후보 PATCH 409·422와 프로젝트 전체 수집 409는 메시지 19.9의 최상위 형식이다. 나머지의 공통 error 형식 및 메시지 error.stage 선택 규칙은 21.2~21.3을 따른다.
+- 변경 종료: dataset.applied의 committed_deletions는 삭제된 project_source_id와 실제 적용 job_id를 함께 돌려준다.
+- Auth는 `weavo_refresh` 쿠키와 `X-CSRF-Token`을 기존 갱신·로그아웃 흐름에서 사용한다. 서비스 간 내부 HTTP는 사용자 JWT가 아닌 서비스별 bearer 토큰과 호출 권한을 검증한다.
+- 내부 최신값·스키마·출처 매핑 조회와 Data API의 HTTP 표현은 [팀 내부 OpenAPI](contracts/README.md)와 메시지 16.1·18.2를 함께 따른다. 이 흐름 문서에 전체 DTO를 반복해서 두지는 않는다.
+
+## 9. 계정 입력과 최근 작업 조회
+
+- 가입과 비밀번호 초기화는 각각 검증된 증명을 제출할 때 신규 비밀번호가 10자 이상이고 영문자·숫자·특수문자를 각각 포함하는지 Auth에서 확인한다. 로그인은 기존 자격 증명을 확인한다. 비밀번호와 증명 원문을 메시지에 넣지 않는다. 비밀번호 입력 조건을 먼저 검사해 실패 시 증명을 소비하지 않고 수정 후 같은 유효 증명으로 다시 제출한다. 증명 소비 후 DB 실패·결과 유실은 기존 재인증 규칙을 따른다.
+- 사용자가 탈퇴 영향을 확인하면 access JWT로 Auth에 요청한다. 비밀번호 재입력과 별도 확인값은 없다. Auth와 Control의 16.5·15.17 비동기 정리와 202 접수 흐름은 그대로다.
+- 대시보드 → Control 작업 조회는 프로젝트 범위 최신 5건이다. 출처의 문제 상세는 같은 조회에 `project_source_id`를 넣어 해당 출처의 실제 수집 회차를 먼저 추린 뒤 최신 5건을 반환한다. 공유 수집의 중복 요청 또는 적재 자식은 다른 수집 회차로 세지 않는다. 두 화면의 5건 표시는 작업 보존 정책이 아니다. 상세 조회는 job_id와 project_id를 이용한다.
+
+## 10. 공통 수집 연결과 삭제 표시
+
+- 정기·수동 모두 collection JOB → 프로젝트 출처별 ingestion JOB(parent_job_id=collection)으로 연결한다. JOB_PROJECT_RESULT는 프로젝트 출처를 구분하며 수동 요청은 JOB_EXECUTION_LINK로 공유 collection과 대상 출처에 합류한다. 동일 collection·출처의 중복 적재 생성을 원자적으로 차단한다.
+- 요청 및 출처의 완료 상태는 필요한 적재 결과까지 확인한다. 전혀 변경 없는 정상 종료는 적재 없이 완료하되 NO_CHANGE 전에 새 데이터가 있으면 적재한다. 최근 수집 최대 5건은 실제 collection 회차로 세고 미측정 건수는 null이다.
+- 프로젝트 삭제 접수 후 목록에 삭제 중을 표시하고 실패는 확인 필요로 안내한다. 내부 정리를 완료하면 목록에서 제거하고 완료 후 별도 삭제 작업 조회는 제공하지 않는다. 기술 재처리·데이터 쓰기 차단과 Auth의 탈퇴 정리 완료 통지는 유지한다.

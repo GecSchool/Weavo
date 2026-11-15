@@ -1,0 +1,10 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "status": "FAILED",
+  "error": {
+    "code": "DATABASE_UNAVAILABLE",
+    "stage": "PROJECT_DATA_DELETE",
+    "message": "프로젝트 데이터 삭제를 완료하지 못했습니다.",
+    "details": {}
+  }
+}
