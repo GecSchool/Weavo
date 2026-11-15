@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "analysis.completed payload",
+  "description": "명세 6.2·16.2",
+  "x-weavo-source": "../../../service-message-contracts.md §6.2",
+  "type": "object",
+  "properties": {
+    "attempt_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "analysis_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "project_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purpose": {
+      "enum": [
+        "INITIAL",
+        "RETRY_SOURCE",
+        "ADD_SOURCE",
+        "REVALIDATE",
+        "REPAIR_NAVIGATION",
+        "REPAIR_CONNECTOR",
+        "RECHECK_SOURCE"
+      ]
+    },
+    "revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "SKIPPED"
+      ]
+    },
+    "schema_change_required": {
+      "type": "boolean"
+    },
+    "candidate": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/candidate"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_results": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/sourceResult"
+      }
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "attempt_id",
+    "analysis_id",
+    "project_id",
+    "purpose",
+    "revision",
+    "status",
+    "schema_change_required",
+    "candidate",
+    "source_results",
+    "error"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "not": {
+              "const": "REPAIR_NAVIGATION"
+            }
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "enum": [
+              "INITIAL",
+              "RETRY_SOURCE"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_results": {
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "../common.schema.json#/definitions/sourceResult"
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "status": {
+                        "const": "SUCCEEDED"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "intermediate_ref": {
+                        "$ref": "../common.schema.json#/definitions/s3Ref"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

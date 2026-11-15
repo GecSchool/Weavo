@@ -1,0 +1,13 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "operation": "UPDATE_SCHEMA_METADATA",
+  "change_job_id": null,
+  "schema_version": 1,
+  "dataset_revision": 19,
+  "active_project_source_ids": [
+    "95f7d7de-ec00-4fbe-b430-fa3a79763c18"
+  ],
+  "metadata_revision": 5,
+  "status": "SUCCEEDED",
+  "error": null
+}

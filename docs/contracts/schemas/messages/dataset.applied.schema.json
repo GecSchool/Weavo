@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dataset.applied payload",
+  "description": "10.2·10.4~10.6·19.4: 결과마다 필드가 다르며 상세 필수 조합 추가 대조 필요",
+  "x-weavo-source": "../../../service-message-contracts.md §10.2",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "change_job_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "operation": {
+      "enum": [
+        "REPLACE",
+        "UPDATE_SOURCES",
+        "BEGIN_CHANGE",
+        "END_CHANGE",
+        "SET_CONNECTOR_REVISION",
+        "UPDATE_SCHEMA_METADATA"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "examples": [
+        "SUCCEEDED",
+        "FAILED"
+      ]
+    },
+    "schema_version": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dataset_revision": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/nonnegative"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "active_project_source_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/uuid"
+      }
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "metadata_revision": {
+      "$ref": "../common.schema.json#/definitions/nonnegative"
+    },
+    "connector_revision": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/positive"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "project_source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "guard_scope": {
+      "enum": [
+        "ACTIVE",
+        "CHANGE"
+      ]
+    },
+    "change_state": {
+      "enum": [
+        "OPEN",
+        "CLOSED"
+      ]
+    },
+    "disposition": {
+      "anyOf": [
+        {
+          "enum": [
+            "COMPLETED",
+            "ABANDONED"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "committed_appends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "job_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        },
+        "required": [
+          "project_source_id",
+          "job_id"
+        ]
+      }
+    },
+    "committed_deletions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_source_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          },
+          "job_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        },
+        "required": [
+          "project_source_id",
+          "job_id"
+        ],
+        "description": "21: 실제 삭제 적용 job_id"
+      }
+    },
+    "replace_committed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "project_id",
+    "change_job_id",
+    "status",
+    "error"
+  ]
+}

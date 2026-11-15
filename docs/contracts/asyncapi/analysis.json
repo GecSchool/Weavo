@@ -1,0 +1,79 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Weavo Analysis SQS 계약 초안",
+    "version": "0.1.0",
+    "description": "이 서비스 관점의 send/receive. 주소는 로컬 환경 큐 이름; 실제 리소스·운영 주소는 환경 설정. 구현 완료나 외부 공개를 뜻하지 않는다."
+  },
+  "defaultContentType": "application/json",
+  "channels": {
+    "analysisJobs": {
+      "address": "analysis-jobs",
+      "messages": {
+        "analysis_execute": {
+          "$ref": "#/components/messages/analysis_execute"
+        }
+      }
+    },
+    "controlResults": {
+      "address": "control-results",
+      "messages": {
+        "analysis_completed": {
+          "$ref": "#/components/messages/analysis_completed"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receive_analysisJobs_analysis_execute": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/analysisJobs"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/analysisJobs/messages/analysis_execute"
+        }
+      ],
+      "description": "control → analysis. 메시지 명세 6.1; 형식 및 업무 조건은 원문 참조."
+    },
+    "send_controlResults_analysis_completed": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/controlResults"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/controlResults/messages/analysis_completed"
+        }
+      ],
+      "description": "analysis → control. 메시지 명세 6.2; 형식 및 업무 조건은 원문 참조."
+    }
+  },
+  "components": {
+    "messages": {
+      "analysis_execute": {
+        "name": "analysis.execute",
+        "title": "analysis.execute",
+        "description": "원문 service-message-contracts.md 6.1절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/analysis.execute.envelope.schema.json"
+          }
+        }
+      },
+      "analysis_completed": {
+        "name": "analysis.completed",
+        "title": "analysis.completed",
+        "description": "원문 service-message-contracts.md 6.2절. JSON Schema는 문서화·검증 초안이며 모든 업무 조건을 대체하지 않음.",
+        "payload": {
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "$ref": "../schemas/messages/analysis.completed.envelope.schema.json"
+          }
+        }
+      }
+    }
+  }
+}

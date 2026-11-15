@@ -1,0 +1,15 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "operation": "UPDATE_SCHEMA_METADATA",
+  "change_job_id": null,
+  "expected_schema_version": 1,
+  "expected_metadata_revision": 4,
+  "fields": [
+    {
+      "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+      "display_name": "공지 제목",
+      "description": null,
+      "display_order": 0
+    }
+  ]
+}

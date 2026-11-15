@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "event_type": "collection.schedule.triggered",
+  "payload": {
+    "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+    "scheduled_at": "<aws.scheduler.scheduled-time>"
+  }
+}

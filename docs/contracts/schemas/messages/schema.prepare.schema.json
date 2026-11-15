@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "schema.prepare payload",
+  "description": "18.1 승인 필드별 description과 display_order 필수",
+  "x-weavo-source": "../../../service-message-contracts.md §18.1",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "change_job_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "schema_version": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "schema": {
+      "$ref": "../common.schema.json#/definitions/schema"
+    }
+  },
+  "required": [
+    "project_id",
+    "change_job_id",
+    "schema_version",
+    "schema"
+  ],
+  "allOf": [
+    {
+      "properties": {
+        "schema": {
+          "properties": {
+            "fields": {
+              "items": {
+                "required": [
+                  "description",
+                  "display_order"
+                ],
+                "properties": {
+                  "display_order": {
+                    "$ref": "../common.schema.json#/definitions/nonnegative"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

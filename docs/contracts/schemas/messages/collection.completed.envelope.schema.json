@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "collection.completed event",
+  "allOf": [
+    {
+      "$ref": "../common.schema.json#/definitions/eventEnvelope"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "collection.completed"
+        },
+        "payload": {
+          "$ref": "collection.completed.schema.json"
+        }
+      },
+      "required": [
+        "event_type",
+        "payload"
+      ]
+    }
+  ]
+}

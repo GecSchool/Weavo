@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "project-data.delete payload",
+  "description": "원문 서비스 메시지 명세 16.4",
+  "x-weavo-source": "../../../service-message-contracts.md §16.4",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    }
+  },
+  "required": [
+    "project_id"
+  ]
+}

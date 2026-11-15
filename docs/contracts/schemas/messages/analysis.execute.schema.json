@@ -1,0 +1,345 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "analysis.execute payload",
+  "description": "명세 6.1; 목적별 입력. 업무 시간 상한 및 영향 대상 전체 여부는 실행 검증",
+  "x-weavo-source": "../../../service-message-contracts.md §6.1",
+  "type": "object",
+  "properties": {
+    "analysis_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "project_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purpose": {
+      "enum": [
+        "INITIAL",
+        "RETRY_SOURCE",
+        "ADD_SOURCE",
+        "REVALIDATE",
+        "REPAIR_NAVIGATION",
+        "REPAIR_CONNECTOR",
+        "RECHECK_SOURCE"
+      ]
+    },
+    "revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "collection_purpose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "max_duration_seconds": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/analysisSource"
+      }
+    },
+    "current_candidate": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/candidate"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recovery_baselines": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/recoveryBaseline"
+      }
+    },
+    "failure_context": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/failureContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "intermediate_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/intermediateRef"
+      }
+    }
+  },
+  "required": [
+    "analysis_id",
+    "project_id",
+    "purpose",
+    "revision",
+    "max_duration_seconds"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "INITIAL"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "sources",
+          "collection_purpose"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/analysisSource"
+            },
+            "minItems": 1
+          },
+          "collection_purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "max_duration_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "RETRY_SOURCE"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "sources",
+          "current_candidate",
+          "intermediate_refs"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/analysisSource"
+            },
+            "minItems": 1
+          },
+          "current_candidate": {
+            "$ref": "../common.schema.json#/definitions/candidate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "ADD_SOURCE"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "sources",
+          "current_candidate"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/analysisSource"
+            },
+            "minItems": 1
+          },
+          "current_candidate": {
+            "$ref": "../common.schema.json#/definitions/candidate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "REVALIDATE"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "sources",
+          "current_candidate"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/analysisSource"
+            },
+            "minItems": 1
+          },
+          "current_candidate": {
+            "$ref": "../common.schema.json#/definitions/candidate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "RECHECK_SOURCE"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "sources",
+          "current_candidate",
+          "failure_context"
+        ],
+        "properties": {
+          "sources": {
+            "allOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "../common.schema.json#/definitions/analysisSource"
+                },
+                "minItems": 1
+              },
+              {
+                "maxItems": 1
+              }
+            ]
+          },
+          "current_candidate": {
+            "$ref": "../common.schema.json#/definitions/candidate"
+          },
+          "failure_context": {
+            "$ref": "../common.schema.json#/definitions/failureContext"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "REPAIR_NAVIGATION"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "recovery_baselines",
+          "failure_context"
+        ],
+        "properties": {
+          "recovery_baselines": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/recoveryBaseline"
+            },
+            "minItems": 1
+          },
+          "failure_context": {
+            "$ref": "../common.schema.json#/definitions/failureContext"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "const": "REPAIR_CONNECTOR"
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "required": [
+          "recovery_baselines",
+          "failure_context"
+        ],
+        "properties": {
+          "recovery_baselines": {
+            "type": "array",
+            "items": {
+              "$ref": "../common.schema.json#/definitions/recoveryBaseline"
+            },
+            "minItems": 1
+          },
+          "failure_context": {
+            "$ref": "../common.schema.json#/definitions/failureContext"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "not": {
+              "const": "REPAIR_NAVIGATION"
+            }
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        }
+      }
+    }
+  ]
+}

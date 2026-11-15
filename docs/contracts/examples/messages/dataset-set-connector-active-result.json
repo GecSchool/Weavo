@@ -1,0 +1,11 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+  "operation": "SET_CONNECTOR_REVISION",
+  "guard_scope": "ACTIVE",
+  "change_job_id": null,
+  "schema_version": 1,
+  "connector_revision": 3,
+  "status": "SUCCEEDED",
+  "error": null
+}

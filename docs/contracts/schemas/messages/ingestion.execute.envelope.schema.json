@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ingestion.execute command",
+  "allOf": [
+    {
+      "$ref": "../common.schema.json#/definitions/commandEnvelope"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command_type": {
+          "const": "ingestion.execute"
+        },
+        "payload": {
+          "$ref": "ingestion.execute.schema.json"
+        }
+      },
+      "required": [
+        "command_type",
+        "payload"
+      ]
+    }
+  ]
+}

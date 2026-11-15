@@ -1,0 +1,18 @@
+{
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "change_job_id": "20549fac-0901-42bd-be1d-4acad93965bc",
+  "schema_version": 1,
+  "schema": {
+    "fields": [
+      {
+        "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+        "api_name": "title",
+        "display_name": "제목",
+        "description": null,
+        "display_order": 0,
+        "type": "string",
+        "nullable": true
+      }
+    ]
+  }
+}

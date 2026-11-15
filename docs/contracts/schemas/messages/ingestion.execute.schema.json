@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ingestion.execute payload",
+  "description": "8.1 최초 APPEND도 change_job_id 필수; 최초/반복 구분은 상위 작업 확인",
+  "x-weavo-source": "../../../service-message-contracts.md §8.1",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "project_source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "source_id": {
+      "$ref": "../common.schema.json#/definitions/uuid"
+    },
+    "mode": {
+      "enum": [
+        "APPEND",
+        "APPROVED_SOURCE_APPEND",
+        "PREPARE"
+      ]
+    },
+    "schema_version": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "connector_revision": {
+      "$ref": "../common.schema.json#/definitions/positive"
+    },
+    "change_job_id": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/definitions/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "snapshot_ref": {
+      "$ref": "../common.schema.json#/definitions/s3Ref"
+    },
+    "schema": {
+      "$ref": "../common.schema.json#/definitions/schema"
+    },
+    "field_connectors": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/definitions/fieldConnector"
+      }
+    }
+  },
+  "required": [
+    "project_id",
+    "project_source_id",
+    "source_id",
+    "mode",
+    "schema_version",
+    "connector_revision",
+    "change_job_id",
+    "snapshot_ref",
+    "schema",
+    "field_connectors"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "APPROVED_SOURCE_APPEND",
+              "PREPARE"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "change_job_id": {
+            "$ref": "../common.schema.json#/definitions/uuid"
+          }
+        }
+      }
+    }
+  ]
+}

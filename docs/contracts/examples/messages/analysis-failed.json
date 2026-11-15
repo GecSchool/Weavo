@@ -1,0 +1,26 @@
+{
+  "attempt_id": "43f5b110-f193-4157-91f2-1a16b8fb70d6",
+  "analysis_id": "ef7ba73e-6843-4ecf-963a-599cc3442714",
+  "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+  "purpose": "RETRY_SOURCE",
+  "revision": 2,
+  "status": "FAILED",
+  "schema_change_required": false,
+  "candidate": null,
+  "source_results": [
+    {
+      "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+      "status": "FAILED",
+      "validation_status": "FAILED",
+      "sample_ref": null,
+      "error": {
+        "code": "NAVIGATION_FAILED",
+        "stage": "ANALYSIS_NAVIGATION",
+        "message": "다음 목록 이동 후보를 검증하지 못했습니다.",
+        "details": {}
+      },
+      "intermediate_ref": null
+    }
+  ],
+  "error": null
+}

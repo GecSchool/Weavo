@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dataset.apply command",
+  "allOf": [
+    {
+      "$ref": "../common.schema.json#/definitions/commandEnvelope"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command_type": {
+          "const": "dataset.apply"
+        },
+        "payload": {
+          "$ref": "dataset.apply.schema.json"
+        }
+      },
+      "required": [
+        "command_type",
+        "payload"
+      ]
+    }
+  ]
+}
