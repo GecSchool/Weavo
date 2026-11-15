@@ -1,0 +1,1207 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Weavo Data HTTP 계약 초안",
+    "version": "0.1.0",
+    "description": "팀 내부 개발 계약이다. API의 형식은 이 문서를, 서비스 간 처리와 구현 검증은 계약 README를 따른다."
+  },
+  "paths": {
+    "/api/projects/{p}/keys": {
+      "get": {
+        "summary": "GET /api/projects/{p}/keys",
+        "description": "처리: API 키 목록·nullable last_used_at; 비밀값 제외\n키 비밀값을 반환하지 않는다. last_used_at은 RFC3339 UTC이며 사용 이력 없음 또는 Redis 장애 시 null이다.",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "last_used_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "key_id",
+                          "name",
+                          "last_used_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "keys"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "명시되지 않은 실패 응답. 상세 code와 retryable은 발생 조건에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "POST /api/projects/{p}/keys",
+        "description": "처리: 201 key_id·최초 1회 secret; 발급 개수 제한 없음\n프로젝트 읽기 전용 키를 발급한다. secret은 발급 응답에서만 제공하고 발급 개수 제한은 두지 않는다.",
+        "responses": {
+          "201": {
+            "description": "생성 성공.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key_id",
+                    "secret"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "명시되지 않은 실패 응답. 상세 code와 retryable은 발생 조건에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "JSON 요청 필드와 필수 여부는 아래 스키마를 따른다. 조건별 규칙은 설명과 기존 스펙을 함께 확인한다.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/projects/{p}/keys/{k}": {
+      "delete": {
+        "summary": "DELETE /api/projects/{p}/keys/{k}",
+        "description": "처리: 204 키 폐기\n폐기 상태를 Data DB에 커밋한 뒤 성공을 반환한다.",
+        "responses": {
+          "204": {
+            "description": "성공; 응답 본문 없음."
+          },
+          "default": {
+            "description": "명시되지 않은 실패 응답. 상세 code와 retryable은 발생 조건에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "k",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{p}/v{v}/records": {
+      "get": {
+        "summary": "GET /api/projects/{p}/v{v}/records",
+        "description": "처리: 200 data·meta; 필터·정렬·커서 지원\n기본 limit=100, 범위 1~500; cursor, sort_by, sort_order, fields, filter[field][operator]; 여러 필터 AND; cursor 조건/데이터 변경 409.\n동적 필터: filter[field][operator]=value; string eq/contains, number/date/datetime eq/gt/gte/lt/lte, boolean/url eq, 모든 타입 is_null=true|false. 여러 조건 AND, contains 영문 대소문자 무시. 필드명은 프로젝트별 동적이며 OR 미지원.\nfilter[field][operator] 조건은 AND이며 정렬은 단일 필드다. 기본 정렬은 record_id asc이고 동률 시 record_id를 같은 방향으로 사용한다. sort는 NULLS LAST다. 커서 조건·데이터 또는 해당 출처 매핑 revision이 변경되면 409다.",
+        "responses": {
+          "200": {
+            "description": "성공. record_id는 서비스의 전역 저장 식별자, source_id는 공유 출처 식별자다. 사용자 필드는 해당 프로젝트의 활성 스키마에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "프로젝트별 사용자 필드와 시스템 필드; 활성 schema_version에 따라 변함",
+                        "properties": {
+                          "record_id": {
+                            "type": "integer",
+                            "description": "Data DB 전역 순차 식별자"
+                          },
+                          "source_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "공유 출처 식별자"
+                          },
+                          "source_url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "해당 레코드에 직접 접근 가능한 확인된 절대 URL 또는 null"
+                          }
+                        },
+                        "additionalProperties": true,
+                        "required": [
+                          "record_id",
+                          "source_id"
+                        ]
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "schema_version": {
+                          "type": "integer"
+                        },
+                        "dataset_revision": {
+                          "type": "integer"
+                        },
+                        "returned_count": {
+                          "type": "integer"
+                        },
+                        "next_cursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "has_more": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "schema_version",
+                        "dataset_revision",
+                        "returned_count",
+                        "next_cursor",
+                        "has_more"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "입력 오류.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 부재.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "충돌 또는 현재 상태 불일치.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "종료된 이전 스키마 버전. 최신 버전·경로를 반환하며 구체적 오류 details 키는 정해지지 않았다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "한도 초과.",
+            "headers": {
+              "Retry-After": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "description": "스펙 2.20: API 키별 한도에 대한 재시도 가능 시간; 웹 JWT는 키별 제한 대상이 아님"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "의존 서비스·저장소 장애.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "명시되지 않은 실패 응답. 상세 code와 retryable은 발생 조건에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "v",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "쉼표로 구분한 사용자 필드명"
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ProjectApiKey": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{p}/v{v}/records/{r}": {
+      "get": {
+        "summary": "GET /api/projects/{p}/v{v}/records/{r}",
+        "description": "처리: 200 data; 없음 404·종료 버전 410\nfields를 사용해도 필수 시스템 식별자는 포함한다. 없는 레코드는 404, 종료된 이전 버전은 410이며 이전 버전에 410을 우선 적용한다.",
+        "responses": {
+          "200": {
+            "description": "성공. record_id는 서비스의 전역 저장 식별자, source_id는 공유 출처 식별자다. 사용자 필드는 해당 프로젝트의 활성 스키마에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "프로젝트별 동적 필드",
+                      "properties": {
+                        "record_id": {
+                          "type": "integer",
+                          "description": "Data DB 전역 순차 식별자"
+                        },
+                        "source_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "description": "공유 출처 식별자"
+                        },
+                        "source_url": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "해당 레코드에 직접 접근 가능한 확인된 절대 URL 또는 null"
+                        }
+                      },
+                      "additionalProperties": true,
+                      "required": [
+                        "record_id",
+                        "source_id"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "대상 없음.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "종료된 이전 스키마 버전. 최신 버전·경로를 반환하며 구체적 오류 details 키는 정해지지 않았다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "입력 오류.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 부재.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "한도 초과.",
+            "headers": {
+              "Retry-After": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "description": "스펙 2.20: API 키별 한도에 대한 재시도 가능 시간; 웹 JWT는 키별 제한 대상이 아님"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "의존 서비스·저장소 장애.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "명시되지 않은 실패 응답. 상세 code와 retryable은 발생 조건에 따른다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "v",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "r",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "식별자 형식은 스키마를 따른다."
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "쉼표로 구분한 사용자 필드명"
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ProjectApiKey": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "ProjectApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "RefreshCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "weavo_refresh",
+        "description": "팀 내부 전송 형식 보완: HttpOnly Secure refresh 세션 쿠키"
+      },
+      "InternalBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "팀 내부 전송 형식 보완: 서비스별 내부 전용 토큰; 사용자의 JWT와 별도"
+      }
+    }
+  }
+}
