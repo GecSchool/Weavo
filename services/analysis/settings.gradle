@@ -1,3 +1,4 @@
 rootProject.name = 'analysis'
 
 includeBuild('../shared/worker-runtime')
+includeBuild('../shared/site-access')

@@ -88,3 +88,5 @@ jobs:
       - run: ./gradlew --no-daemon spotlessCheck test
       - if: matrix.service == 'analysis'
         run: ./gradlew --no-daemon :worker-runtime:spotlessCheck :worker-runtime:test
+      - if: matrix.service == 'analysis'
+        run: ./gradlew --no-daemon :site-access:spotlessCheck :site-access:test
