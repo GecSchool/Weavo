@@ -392,6 +392,29 @@ class JobWorkerTest {
     assertThatExceptionOfType(CancellationException.class).isThrownBy(attempt::requireOwnership);
   }
 
+  @Test
+  void stopsWaitingForAuthorizationAtTheOperationDeadline() throws Exception {
+    Clock clock = Clock.systemUTC();
+    var attempt =
+        new AttemptContext(
+            clock,
+            UUID.randomUUID(),
+            Duration.ofSeconds(8),
+            Duration.ofSeconds(2),
+            clock.instant().plusSeconds(10));
+    attempt.pauseForRecheck();
+
+    assertTimeoutPreemptively(
+        Duration.ofSeconds(2),
+        () ->
+            assertThatExceptionOfType(TimeoutException.class)
+                .isThrownBy(() -> attempt.requireWorkAllowed(clock.instant().plusMillis(150))));
+
+    assertThat(attempt.isCancellationRequested()).isFalse();
+    attempt.renew(clock.instant().plusSeconds(5));
+    attempt.requireWorkAllowed(clock.instant().plusSeconds(1));
+  }
+
   private JobWorker<String> worker(WorkerTiming timing, TestHandler handler) {
     var processor =
         new JobProcessor<String>() {

@@ -47,27 +47,40 @@ public final class AttemptContext {
 
   /** Call before each new site request or other budgeted operation. */
   public void requireWorkAllowed() throws InterruptedException, TimeoutException {
-    requireOwnership();
-    if (!now().isBefore(workDeadline)) {
+    requireWorkAllowed(workDeadline);
+  }
+
+  /** A request or navigation may have a shorter deadline than the attempt. */
+  public synchronized void requireWorkAllowed(Instant operationDeadline)
+      throws InterruptedException, TimeoutException {
+    Instant deadline = earlier(workDeadline, operationDeadline);
+    awaitOwnership(deadline);
+    if (!now().isBefore(deadline)) {
       throw new TimeoutException("Worker action budget expired");
     }
   }
 
   /** Call before writing objects or publishing a result. */
   public synchronized void requireOwnership() throws InterruptedException {
+    awaitOwnership(executionDeadline);
+  }
+
+  private void awaitOwnership(Instant deadline) throws InterruptedException {
     while (awaitingConfirmation && isValid()) {
-      long remainingNanos =
-          Duration.between(
-                  now(),
-                  leaseExpiresAt.isBefore(executionDeadline) ? leaseExpiresAt : executionDeadline)
-              .toNanos();
-      if (remainingNanos > 0) {
-        TimeUnit.NANOSECONDS.timedWait(this, remainingNanos);
+      Instant wakeAt = earlier(deadline, earlier(leaseExpiresAt, executionDeadline));
+      long remainingNanos = Duration.between(now(), wakeAt).toNanos();
+      if (remainingNanos <= 0) {
+        break;
       }
+      TimeUnit.NANOSECONDS.timedWait(this, remainingNanos);
     }
     if (!isValid()) {
       throw new CancellationException("Attempt lease or execution deadline is no longer valid");
     }
+  }
+
+  private static Instant earlier(Instant first, Instant second) {
+    return first.isBefore(second) ? first : second;
   }
 
   public synchronized boolean isCancellationRequested() {
