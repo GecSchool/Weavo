@@ -2,6 +2,8 @@
 
 Java 21과 Gradle Wrapper를 사용합니다. 현재는 환경 설정과 SQS·S3 리소스 연결 확인 기능만 구현되어 있습니다. 분석·수집, 메시지 소비와 결과 발행은 아직 구현하지 않았습니다. DB 연결은 사용하지 않습니다.
 
+수집 메시지 모델과 JSON 검증은 `collection.infrastructure.messaging`, 목록·필드 규칙은 `collection.domain.rule`에 둡니다. 계약의 기준은 `docs/service-message-contracts.md`이며, 메시지 리스너와 실제 수집 동작은 이후 구현합니다. `ContractJson`은 payload의 누락과 null, 알 수 없는 필드를 구분하지만 알 수 없는 envelope 필드는 보존하지 않습니다. 동일 이벤트 재발행에는 최초 메시지 전체를 보관하여 그대로 사용해야 합니다. 구조화된 메시지 형식은 `docs/contracts/schemas/`도 함께 확인합니다.
+
 ## 실행 및 테스트
 
 ```bash
@@ -35,7 +37,8 @@ WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun -
 src/main/java/com/weavo/crawler/
 ├── CrawlerApplication.java  # Spring Boot 진입점 및 --check
 ├── WorkerSettings.java             # 환경 및 리소스 설정 검증
-└── AwsResourceChecker.java         # SQS·S3 읽기 전용 연결 확인
+├── AwsResourceChecker.java         # SQS·S3 읽기 전용 연결 확인
+└── collection/                     # 수집 메시지와 이동·필드 규칙
 ```
 
 실제 기능을 구현할 때 기능별 패키지를 먼저 나누고 필요한 책임만 추가합니다. 공통 Java 파서 모듈과 생성 코드의 격리 실행은 아직 구현하지 않았습니다.

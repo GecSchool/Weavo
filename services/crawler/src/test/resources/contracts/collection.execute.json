@@ -1,0 +1,81 @@
+{
+  "format_version": 1,
+  "command_type": "collection.execute",
+  "job_id": "6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc",
+  "parent_job_id": null,
+  "requested_at": "2026-11-06T00:00:00Z",
+  "expires_at": "2026-11-06T00:10:00Z",
+  "payload": {
+    "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+    "execution_reason": "SCHEDULED",
+    "max_duration_seconds": 60,
+    "navigation_revision": 3,
+    "navigation": {
+      "list_url": "https://school.example/notices",
+      "initial_actions": [],
+      "list_access": {
+        "method": "HTTP",
+        "wait_selector": null
+      },
+      "item_selector": ".notice-list .notice",
+      "pagination": {
+        "type": "NEXT_LINK",
+        "selector": ".pagination .next",
+        "url_attribute": "href",
+        "wait_selector": null
+      }
+    },
+    "projects": [
+      {
+        "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+        "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+        "schema_version": 1,
+        "connector_revision": 2,
+        "collection_mode": "INCREMENTAL",
+        "schema": {
+          "fields": [
+            {
+              "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+              "api_name": "title",
+              "display_name": "제목",
+              "type": "string",
+              "nullable": true
+            }
+          ]
+        },
+        "field_connectors": [
+          {
+            "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+            "location": "LIST",
+            "selector": ".notice-title",
+            "extract": {
+              "type": "TEXT",
+              "attribute": null
+            },
+            "parser": {
+              "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
+            },
+            "detail_navigation": null
+          }
+        ],
+        "latest_records": [
+          {
+            "field_values": {
+              "ba4f9e1e-ae8e-4a3c-9261-dca457848148": "장학금 신청 안내"
+            }
+          },
+          {
+            "field_values": {
+              "ba4f9e1e-ae8e-4a3c-9261-dca457848148": "수강 신청 일정 안내"
+            }
+          },
+          {
+            "field_values": {
+              "ba4f9e1e-ae8e-4a3c-9261-dca457848148": "도서관 운영 시간 변경"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
