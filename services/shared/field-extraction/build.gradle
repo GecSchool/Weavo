@@ -1,0 +1,36 @@
+plugins {
+    id 'java-library'
+    id 'com.diffplug.spotless' version '8.11.0'
+}
+
+group = 'com.weavo'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation 'org.jsoup:jsoup:1.24.1'
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testImplementation 'com.microsoft.playwright:playwright:1.55.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform { excludeTags 'browser' }
+}
+
+spotless { java { googleJavaFormat() } }
+
+tasks.register('browserTest', Test) {
+    group = 'verification'
+    description = 'Compare CSS extraction with real Chromium on fixed HTML.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'browser' }
+}
