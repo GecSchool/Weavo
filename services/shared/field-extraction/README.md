@@ -1,0 +1,46 @@
+# 공통 필드 추출과 타입 변환
+
+Analysis에서 확보한 DOM, Crawler의 임시 추출에 쓰는 DOM, Ingestion에서 읽은 저장 HTML에 같은 CSS 추출 규칙을 적용할 수 있는 Java 모듈입니다. 목록에서는 `item_selector`로 찾은 항목에서 필드를 읽고, 상세에서는 상세 DOM을 기준으로 읽습니다.
+
+```java
+var document = HtmlScope.parse(html);
+var item = document.select("article.notice").getFirst();
+var extracted = FieldExtractor.extractText(item, ".amount");
+if (extracted.status() == FieldExtractor.Status.SUCCESS && extracted.matchCount() == 1) {
+  var converted = FieldValueConverter.convert(
+      extracted.rawValues().getFirst(), FieldValueConverter.Type.NUMBER, true);
+  // converted.failure()가 null이면 converted.value()를 사용합니다.
+}
+```
+
+지정 속성 원문은 `extractAttribute(scope, selector, attribute)`로 읽습니다. 여러 요소가 매칭되면 DOM 순서의 문자열 목록을 보존합니다. 목록에서 단일 값을 정하거나 Java 파서 결과를 연결하는 단계는 #6에서 다룹니다.
+
+| 상황 | 반환 |
+|---|---|
+| 원래 없는 필드 | `absent()` → `ABSENT`, `matchCount=null` |
+| DOM을 확보하지 못했거나 선택자가 잘못됨 | `FAILED`, `matchCount=null` |
+| 선택자가 실행됐고 일치 요소가 없음 | `FAILED`, `matchCount=0` |
+| 요소는 매칭됐지만 지정 속성이 일부 없음 | `FAILED`, 실제 매칭 수와 확보한 원문 |
+| 요소 값이 빈 문자열 | `SUCCESS`, 원문 목록에 빈 문자열 유지 |
+| nullable 필드의 실제 null | 변환 성공, 값 null |
+| 숫자·날짜 등 스키마 타입 변환 실패 | 값 null, `TYPE_CONVERSION_FAILED` |
+
+변환 실패와 추출 실패가 있는 레코드는 호출 서비스가 적재에서 제외합니다. 실패 원문은 필요한 경우 기존 sidecar 정책에 따라 분리합니다.
+
+문자열과 속성값은 HTML 엔티티를 해석한 뒤 공백과 순서를 유지합니다. 숫자는 JSON 숫자 구문을 받아 `BigDecimal`로 변환하고 값이 같은 소수의 자릿수를 통일합니다. 불리언 입력은 `true` 또는 `false`입니다. 날짜는 `YYYY-MM-DD`로 검증하고 일시는 오프셋이 있는 입력을 UTC로 변환합니다. 일시는 나노초까지 지원합니다. URL은 호스트가 있는 절대 HTTP(S) 형식을 확인하고 원문을 반환합니다.
+
+## 서비스에 연결
+
+해당 기능의 구현 단계에서 서비스의 `settings.gradle`에 `includeBuild('../shared/field-extraction')`을 추가하고, `build.gradle`의 의존성에 `implementation 'com.weavo:field-extraction'`을 등록합니다.
+
+## 테스트
+
+저장소 루트에서 실행합니다.
+
+```bash
+./services/analysis/gradlew -p services/shared/field-extraction spotlessCheck test
+./services/analysis/gradlew -p services/analysis installChromium
+./services/analysis/gradlew -p services/shared/field-extraction browserTest
+```
+
+`browserTest`는 고정 HTML에서 원본 마크업과 Chromium이 저장한 DOM을 비교합니다. 테스트에 포함한 자식·자손·그룹·위치·속성 선택자에서 브라우저가 직접 읽은 결과도 대조합니다.
