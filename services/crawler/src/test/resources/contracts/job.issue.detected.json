@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "event_type": "job.issue.detected",
+  "event_id": "9f920ad3-bb73-4288-badb-06a452922c93",
+  "job_id": "6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc",
+  "occurred_at": "2026-11-06T00:01:10Z",
+  "payload": {
+    "attempt_id": "43f5b110-f193-4157-91f2-1a16b8fb70d6",
+    "reporting_service": "CRAWLER",
+    "scope": "PROJECT_SOURCE",
+    "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
+    "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+    "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+    "field_ids": [
+      "a68629e0-30fd-49a6-abbf-3be63bdc8d4d"
+    ],
+    "schema_version": 1,
+    "connector_revision": 2,
+    "navigation_revision": 3,
+    "error": {
+      "code": "FIELD_EXTRACTION_FAILED",
+      "stage": "TEMPORARY_EXTRACTION",
+      "message": "상세 화면에서 본문 요소를 찾지 못했습니다.",
+      "details": {
+        "page_url": "https://school.example/notices/123",
+        "selector": ".article-body",
+        "matched_element_count": 0
+      }
+    }
+  }
+}

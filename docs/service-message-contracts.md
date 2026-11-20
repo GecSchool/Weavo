@@ -406,9 +406,11 @@ Control → Analysis. 초기 분석부터 공동 추천까지 한 작업으로 �
 | RETRY_SOURCE | 대상 sources, 현재 공동 후보, 기준 revision, 기존 유효 출처별 intermediate_refs. 사용자 수정은 보존하고 해당 출처의 매핑·샘플을 제안 |
 | ADD_SOURCE | 대상 sources, 현재 승인 스키마·후보. 기존 스키마에 맞춰 매핑하며 임의로 스키마를 확장하지 않음 |
 | REVALIDATE | 현재 수정 후보와 영향 출처, revision. 실행·샘플·HTTP 확인 후 결과 반환 |
-| REPAIR_NAVIGATION | 현재 스키마·공유 이동 설정, 영향 프로젝트의 비교 기준, 실패 정보 |
-| REPAIR_CONNECTOR | 현재 스키마·대상 커넥터, 비교 기준, 실패 정보 |
+| REPAIR_NAVIGATION | current_candidate의 기존 목록 규칙, 모든 영향 프로젝트의 recovery_baselines, SOURCE 범위 failure_context |
+| REPAIR_CONNECTOR | current_candidate의 기존 목록 규칙, 대상 하나의 recovery_baselines, PROJECT_SOURCE 범위 failure_context |
 | RECHECK_SOURCE | 운영 중 0건 출처의 재확인. 해당 프로젝트·출처와 현재 승인 설정을 전달 |
+
+두 복구 요청에서 Control은 `current_candidate.source_configs[].navigation`에 기존 목록 URL과 전체 이동 규칙을 담는다. 각 `project_source_id`에 설정과 복구 기준이 하나씩 대응해야 하고 양쪽의 `connector_revision`이 일치해야 한다. 스키마·필드 커넥터·비교값의 복구 기준은 대상별 `recovery_baselines`를 사용한다. 공유 탐색 복구의 후보 `schema`는 null일 수 있으며 모든 대상 설정은 20.2 기준으로 같은 목록 규칙을 가리켜야 한다. 커넥터 복구는 요청과 실패 정보가 동일한 프로젝트 및 프로젝트 출처 한 곳을 가리켜야 한다. `failure_context.error.details.page_url`은 실패 지점 관찰값이므로 목록 시작 URL로 대체하지 않는다. JSON Schema는 필수 객체와 배열 범위를, Java 검증기는 대상과 규칙 간 일치까지 확인한다. 실제 영향 대상 전체와 revision의 현재 유효성은 Control 작업 원장에서 확인한다.
 
 `intermediate_refs`는 재시도 시 Control이 저장한 기존 성공 출처의 불변 중간 결과 참조다. INITIAL 등 참고할 기존 결과가 없는 요청은 빈 배열이다. 각 항목은 `project_source_id`, `intermediate_ref`(`bucket`, `key`)로 구성되며 기존 후보·기준 revision과 함께 전달한다. Analysis는 참조 대상의 analysis_id·project_source_id·형식 및 사용 권한을 검증한다. 참조가 없거나 삭제·조회 실패한 경우 공동 추천을 성공으로 가장하지 않고 해당 출처 재분석 또는 확인 필요로 처리한다. 아래 예시는 실제 RETRY_SOURCE 요청에 추가되는 형태다.
 

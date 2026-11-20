@@ -273,10 +273,25 @@
       },
       "then": {
         "required": [
+          "current_candidate",
           "recovery_baselines",
           "failure_context"
         ],
         "properties": {
+          "current_candidate": {
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/definitions/candidate"
+              },
+              {
+                "properties": {
+                  "source_configs": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          },
           "recovery_baselines": {
             "type": "array",
             "items": {
@@ -285,7 +300,18 @@
             "minItems": 1
           },
           "failure_context": {
-            "$ref": "../common.schema.json#/definitions/failureContext"
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/definitions/failureContext"
+              },
+              {
+                "properties": {
+                  "scope": {
+                    "const": "SOURCE"
+                  }
+                }
+              }
+            ]
           }
         }
       }
@@ -303,19 +329,47 @@
       },
       "then": {
         "required": [
+          "current_candidate",
           "recovery_baselines",
           "failure_context"
         ],
         "properties": {
+          "current_candidate": {
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/definitions/candidate"
+              },
+              {
+                "properties": {
+                  "source_configs": {
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              }
+            ]
+          },
           "recovery_baselines": {
             "type": "array",
             "items": {
               "$ref": "../common.schema.json#/definitions/recoveryBaseline"
             },
-            "minItems": 1
+            "minItems": 1,
+            "maxItems": 1
           },
           "failure_context": {
-            "$ref": "../common.schema.json#/definitions/failureContext"
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/definitions/failureContext"
+              },
+              {
+                "properties": {
+                  "scope": {
+                    "const": "PROJECT_SOURCE"
+                  }
+                }
+              }
+            ]
           }
         }
       }

@@ -1,0 +1,95 @@
+{
+  "format_version": 1,
+  "event_type": "analysis.completed",
+  "event_id": "9f920ad3-bb73-4288-badb-06a452922c93",
+  "job_id": "6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc",
+  "occurred_at": "2026-11-06T00:01:10Z",
+  "payload": {
+    "attempt_id": "43f5b110-f193-4157-91f2-1a16b8fb70d6",
+    "analysis_id": "ef7ba73e-6843-4ecf-963a-599cc3442714",
+    "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+    "purpose": "INITIAL",
+    "revision": 1,
+    "status": "SUCCEEDED",
+    "schema_change_required": false,
+    "candidate": {
+      "schema": {
+        "fields": [
+          {
+            "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+            "api_name": "title",
+            "display_name": "제목",
+            "type": "string",
+            "nullable": true,
+            "recommendation_reason": "목록 항목의 제목을 나타냅니다"
+          }
+        ]
+      },
+      "source_configs": [
+        {
+          "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+          "navigation": {
+            "list_url": "https://school.example/notices",
+            "initial_actions": [],
+            "list_access": {
+              "method": "HTTP",
+              "wait_selector": null
+            },
+            "item_selector": ".notice-list .notice",
+            "pagination": {
+              "type": "NEXT_LINK",
+              "selector": ".pagination .next",
+              "url_attribute": "href",
+              "wait_selector": null
+            }
+          },
+          "connector_revision": 2,
+          "field_connectors": [
+            {
+              "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148",
+              "location": "LIST",
+              "selector": ".notice-title",
+              "extract": {
+                "type": "TEXT",
+                "attribute": null
+              },
+              "parser": {
+                "code": "return rawValues.get(0).replace(\"[공지]\", \"\").strip();"
+              },
+              "detail_navigation": null
+            }
+          ]
+        }
+      ],
+      "excluded_project_source_ids": [],
+      "candidate_mappings": [
+        {
+          "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+          "intermediate_ref": {
+            "bucket": "capstone-artifacts",
+            "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+          },
+          "candidate_key": "candidate-1",
+          "field_id": "ba4f9e1e-ae8e-4a3c-9261-dca457848148"
+        }
+      ]
+    },
+    "source_results": [
+      {
+        "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+        "status": "SUCCEEDED",
+        "validation_status": "PASSED",
+        "sample_ref": {
+          "bucket": "capstone-artifacts",
+          "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/revisions/1/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/sample.json"
+        },
+        "error": null,
+        "intermediate_ref": {
+          "bucket": "capstone-artifacts",
+          "key": "analysis/ef7ba73e-6843-4ecf-963a-599cc3442714/intermediate/95f7d7de-ec00-4fbe-b430-fa3a79763c18/4ad6b0fb-6031-4c38-a8a9-7f52185a6601/43f5b110-f193-4157-91f2-1a16b8fb70d6/result.json"
+        }
+      }
+    ],
+    "error": null
+  }
+}

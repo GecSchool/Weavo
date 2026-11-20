@@ -213,6 +213,47 @@ def main():
         "field_ids": [], "error": {"code": "EMPTY_EXTRACTION", "message": "0건", "details": {}},
     }
     validate_instance(analysis, recheck, "RECHECK_SOURCE with stage omitted")
+
+    for purpose, scope in (("REPAIR_NAVIGATION", "SOURCE"), ("REPAIR_CONNECTOR", "PROJECT_SOURCE")):
+        repair = copy.deepcopy(recheck)
+        repair["purpose"] = purpose
+        candidate = repair["current_candidate"]
+        config = candidate["source_configs"][0]
+        repair["recovery_baselines"] = [{
+            "project_id": repair["project_id"],
+            "project_source_id": config["project_source_id"],
+            "schema_version": 1,
+            "connector_revision": config["connector_revision"],
+            "latest_records": [],
+            "approved_sample_ref": None,
+            "schema": candidate["schema"],
+            "field_connectors": config["field_connectors"],
+        }]
+        failure = repair["failure_context"]
+        failure["scope"] = scope
+        if scope == "SOURCE":
+            repair["project_id"] = None
+            candidate["schema"] = None
+            failure["project_id"] = None
+            failure["project_source_id"] = None
+
+        validate_instance(analysis, repair, f"{purpose} with existing list rule")
+        case = copy.deepcopy(repair)
+        case.pop("current_candidate")
+        expect_rejected(analysis, case, f"{purpose} without current candidate")
+        case["current_candidate"] = None
+        expect_rejected(analysis, case, f"{purpose} with null candidate")
+        case["current_candidate"] = copy.deepcopy(candidate)
+        case["current_candidate"]["source_configs"] = []
+        expect_rejected(analysis, case, f"{purpose} without source configurations")
+        case["current_candidate"]["source_configs"] = [copy.deepcopy(config)]
+        case["current_candidate"]["source_configs"][0].pop("navigation")
+        expect_rejected(analysis, case, f"{purpose} without existing navigation")
+        if scope == "PROJECT_SOURCE":
+            case = copy.deepcopy(repair)
+            case["recovery_baselines"].append(copy.deepcopy(case["recovery_baselines"][0]))
+            expect_rejected(analysis, case, f"{purpose} with multiple targets")
+
     case = copy.deepcopy(recheck)
     case["failure_context"] = None
     expect_rejected(analysis, case, "RECHECK_SOURCE without failure context")
