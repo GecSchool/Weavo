@@ -1,0 +1,29 @@
+plugins {
+    id 'java-library'
+    id 'com.diffplug.spotless' version '8.11.0'
+}
+
+group = 'com.weavo'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    api platform('software.amazon.awssdk:bom:2.31.77')
+    api 'software.amazon.awssdk:s3'
+    api 'software.amazon.awssdk:sqs'
+    implementation platform('org.springframework.boot:spring-boot-dependencies:4.0.9')
+    implementation 'org.springframework.boot:spring-boot'
+    implementation 'tools.jackson.core:jackson-databind:3.1.7'
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.mockito:mockito-core'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+spotless { java { googleJavaFormat() } }

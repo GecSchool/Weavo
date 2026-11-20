@@ -1,37 +1,34 @@
 package com.weavo.crawler;
 
-import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 @SpringBootApplication
 @EnableConfigurationProperties(WorkerSettings.class)
 public class CrawlerApplication {
   public static void main(String[] args) {
     ConfigurableApplicationContext context = SpringApplication.run(CrawlerApplication.class, args);
-    for (String arg : args) {
-      if (arg.equals("--check") || arg.equals("--check=true")) {
-        context.close();
-        return;
-      }
+    if (isResourceCheck(context.getEnvironment())) {
+      context.close();
     }
   }
 
   @Bean
-  ApplicationRunner resourceCheckRunner(WorkerSettings settings) {
-    return (ApplicationArguments args) -> {
-      if (args.containsOption("check") && !"false".equals(firstValue(args))) {
+  ApplicationRunner resourceCheckRunner(WorkerSettings settings, Environment environment) {
+    return args -> {
+      if (isResourceCheck(environment)) {
         new AwsResourceChecker(settings).check();
       }
     };
   }
 
-  private static String firstValue(ApplicationArguments args) {
-    var values = args.getOptionValues("check");
-    return values == null || values.isEmpty() ? "true" : values.get(0);
+  private static boolean isResourceCheck(Environment environment) {
+    String check = environment.getProperty("check");
+    return check != null && !"false".equalsIgnoreCase(check);
   }
 }
