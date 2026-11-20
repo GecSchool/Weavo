@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "command_type": "analysis.execute",
+  "job_id": "6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc",
+  "parent_job_id": null,
+  "requested_at": "2026-11-06T00:00:00Z",
+  "expires_at": "2026-11-06T00:10:00Z",
+  "payload": {
+    "analysis_id": "ef7ba73e-6843-4ecf-963a-599cc3442714",
+    "project_id": "71c46a95-e328-47a5-92e7-a9018e5a5de6",
+    "purpose": "INITIAL",
+    "revision": 1,
+    "collection_purpose": "학교 공지사항의 제목을 통합해서 조회",
+    "max_duration_seconds": 300,
+    "sources": [
+      {
+        "project_source_id": "95f7d7de-ec00-4fbe-b430-fa3a79763c18",
+        "source_id": null,
+        "url": "https://school.example/notices"
+      }
+    ],
+    "current_candidate": null,
+    "recovery_baselines": [],
+    "failure_context": null,
+    "intermediate_refs": []
+  }
+}

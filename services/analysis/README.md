@@ -2,6 +2,8 @@
 
 Java 21과 Gradle Wrapper를 사용합니다. 현재는 환경 설정과 SQS·S3 리소스 연결 확인 기능만 구현되어 있습니다. 분석·수집, 메시지 소비와 결과 발행은 아직 구현하지 않았습니다. DB 연결은 사용하지 않습니다.
 
+분석 요청과 완료 이벤트의 메시지 모델은 `job.infrastructure.messaging`에, 분석에 필요한 이동·필드 규칙은 `job.domain`에 둡니다. JSON 구조와 필수값의 기준은 `docs/service-message-contracts.md`입니다. 메시지를 실제로 소비·발행하는 기능은 별도로 구현합니다. 동일 이벤트 재발행에는 역직렬화한 객체가 아닌 보관된 최초 메시지 전체를 그대로 사용해야 합니다. 구조화된 메시지 형식은 `docs/contracts/schemas/`도 함께 확인합니다.
+
 ## 실행 및 테스트
 
 ```bash
@@ -33,6 +35,7 @@ WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun -
 
 ```text
 src/main/java/com/weavo/analysis/
+├── job/                          # 분석 작업의 메시지 경계와 규칙 모델
 ├── AnalysisApplication.java  # Spring Boot 진입점 및 --check
 ├── WorkerSettings.java             # 환경 및 리소스 설정 검증
 └── AwsResourceChecker.java         # SQS·S3 읽기 전용 연결 확인
