@@ -2,6 +2,7 @@ package com.weavo.analysis;
 
 import java.net.URI;
 import java.util.List;
+import java.util.stream.Stream;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "weavo")
@@ -46,15 +47,25 @@ public record WorkerSettings(
     return resourceName(bucket, "weavo-local-artifacts", "WEAVO_S3_BUCKET");
   }
 
+  public List<String> inputQueueNames() {
+    return List.of(resourceName(analysisQueue, "analysis-jobs", "WEAVO_ANALYSIS_QUEUE"));
+  }
+
+  public String resultQueueName() {
+    return resourceName(resultQueue, "control-results", "WEAVO_RESULT_QUEUE");
+  }
+
   public List<String> queueNames() {
-    return List.of(
-        resourceName(analysisQueue, "analysis-jobs", "WEAVO_ANALYSIS_QUEUE"),
-        resourceName(resultQueue, "control-results", "WEAVO_RESULT_QUEUE"));
+    return Stream.concat(inputQueueNames().stream(), Stream.of(resultQueueName())).toList();
   }
 
   private String resourceName(String value, String localDefault, String variable) {
-    if (value != null && !value.isBlank()) return value.trim();
-    if (isLocal()) return localDefault;
+    if (value != null && !value.isBlank()) {
+      return value.trim();
+    }
+    if (isLocal()) {
+      return localDefault;
+    }
     throw new IllegalArgumentException(variable + " 환경 변수가 필요합니다.");
   }
 }

@@ -1,1 +1,3 @@
 rootProject.name = 'crawler'
+
+includeBuild('../shared/worker-runtime')

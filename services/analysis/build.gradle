@@ -15,6 +15,7 @@ java {
 repositories { mavenCentral() }
 
 dependencies {
+    implementation 'com.weavo:worker-runtime'
     implementation 'tools.jackson.core:jackson-databind:3.1.7'
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation platform('software.amazon.awssdk:bom:2.31.77')
