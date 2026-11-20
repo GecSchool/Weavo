@@ -8,7 +8,7 @@ changed=$(git diff --cached --name-only --diff-filter=ACMR)
 web=false
 for file in $changed; do
   case "$file" in
-    apps/web/*.ts|apps/web/*.tsx|apps/web/*.js|apps/web/*.mjs|apps/web/*.css|services/auth/*.java|services/control/*.java|services/data/*.java|services/ingestion/*.java|services/analysis/*.java|services/crawler/*.java)
+    apps/web/*.ts|apps/web/*.tsx|apps/web/*.js|apps/web/*.mjs|apps/web/*.css|services/auth/*.java|services/control/*.java|services/data/*.java|services/ingestion/*.java|services/analysis/*.java|services/crawler/*.java|services/shared/worker-runtime/*.java)
       if ! git diff --quiet -- "$file"; then
         printf '부분 스테이징된 파일을 모두 스테이징하거나 나눠 커밋하세요: %s\n' "$file" >&2; exit 1
       fi ;;
@@ -25,3 +25,7 @@ for service in auth control data ingestion analysis crawler; do
     (cd "services/$service" && ./gradlew --no-daemon spotlessCheck)
   fi
 done
+if printf '%s\n' "$changed" | grep -Eq '^services/shared/worker-runtime/.*\.java$'; then
+  printf '%s\n' 'worker-runtime Spotless 검사 중...'
+  (cd services/analysis && ./gradlew --no-daemon :worker-runtime:spotlessCheck)
+fi
