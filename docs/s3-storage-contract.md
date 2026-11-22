@@ -334,6 +334,7 @@ manifest의 필드와 다음 예시는 메시지 명세 5.3과 동일하다. `sn
 {
   "format_version": 1,
   "collection_job_id": "6a2f36b6-0524-4bdb-b66a-c6cf27aafdfc",
+  "attempt_id": "43f5b110-f193-4157-91f2-1a16b8fb70d6",
   "source_id": "1c226765-48b1-4518-ad16-057e8998eb84",
   "navigation_revision": 3,
   "created_at": "2026-11-06T00:01:10Z",
