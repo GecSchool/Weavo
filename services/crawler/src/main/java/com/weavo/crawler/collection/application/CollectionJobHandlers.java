@@ -5,6 +5,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.Collection
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProjectResult;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.MessageError;
 import com.weavo.worker.application.AttemptContext;
+import com.weavo.worker.application.JobProcessor.Job;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -16,26 +17,31 @@ public final class CollectionJobHandlers {
     this.handlers = Map.copyOf(handlers);
   }
 
-  public CollectionCompleted execute(CollectionExecute request, AttemptContext attempt)
+  public CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
       throws InterruptedException {
-    var reason = ExecutionReason.valueOf(request.executionReason());
+    var reason = ExecutionReason.valueOf(job.payload().executionReason());
     var handler = handlers.get(reason);
     if (handler == null) {
       throw new IllegalStateException("No collection handler for " + reason);
     }
-    return handler.execute(request, attempt);
+    return handler.execute(job, attempt);
   }
 
   public static CollectionJobHandlers forTesting() {
+    return using(CollectionJobHandlers::fixedResult);
+  }
+
+  public static CollectionJobHandlers using(Handler handler) {
     Map<ExecutionReason, Handler> handlers = new EnumMap<>(ExecutionReason.class);
     for (ExecutionReason reason : ExecutionReason.values()) {
-      handlers.put(reason, CollectionJobHandlers::fixedResult);
+      handlers.put(reason, handler);
     }
     return new CollectionJobHandlers(handlers);
   }
 
   private static CollectionCompleted fixedResult(
-      CollectionExecute request, AttemptContext attempt) {
+      Job<CollectionExecute> job, AttemptContext attempt) {
+    var request = job.payload();
     var error =
         new MessageError(
             "TECHNICAL_FAILURE", null, "테스트 처리기는 실제 수집을 실행하지 않습니다.", Map.of(), false, null);
@@ -76,7 +82,7 @@ public final class CollectionJobHandlers {
 
   @FunctionalInterface
   public interface Handler {
-    CollectionCompleted execute(CollectionExecute request, AttemptContext attempt)
+    CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
         throws InterruptedException;
   }
 }

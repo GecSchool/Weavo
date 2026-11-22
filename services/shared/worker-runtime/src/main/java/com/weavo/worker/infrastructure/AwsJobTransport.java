@@ -1,7 +1,9 @@
 package com.weavo.worker.infrastructure;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -103,20 +105,23 @@ public final class AwsJobTransport implements AutoCloseable {
   }
 
   public void store(String key, String json) {
+    storeObject(key, "application/json", json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  public void storeObject(String key, String contentType, byte[] content) {
     try {
       s3.putObject(
-          request ->
-              request.bucket(bucket).key(key).contentType("application/json").ifNoneMatch("*"),
-          RequestBody.fromString(json));
+          request -> request.bucket(bucket).key(key).contentType(contentType).ifNoneMatch("*"),
+          RequestBody.fromBytes(content));
     } catch (S3Exception exception) {
       if (exception.statusCode() != 412) {
         throw exception;
       }
       // A prior PUT may have succeeded without returning a response.
-      String recorded =
-          s3.getObjectAsBytes(request -> request.bucket(bucket).key(key)).asUtf8String();
-      if (!json.equals(recorded)) {
-        throw new IllegalStateException("Attempt result already contains different bytes");
+      byte[] recorded =
+          s3.getObjectAsBytes(request -> request.bucket(bucket).key(key)).asByteArray();
+      if (!Arrays.equals(content, recorded)) {
+        throw new IllegalStateException("Attempt object already contains different bytes");
       }
     }
   }

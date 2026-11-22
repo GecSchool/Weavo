@@ -28,6 +28,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
@@ -78,6 +79,21 @@ class JobWorkerTest {
       var ordered = inOrder(transport);
       ordered.verify(transport).changeVisibility(FIRST, 30);
       ordered.verify(transport).store(KEY, RESULT);
+      ordered.verify(transport).publish(RESULT);
+      ordered.verify(transport).delete(FIRST);
+    }
+  }
+
+  @Test
+  void publishesAnIssueBeforeCompletionAndAcknowledgement() throws InterruptedException {
+    when(control.claim(eq(JOB_ID), any())).thenReturn(ACQUIRED);
+    String issue = "issue for this attempt";
+    try (var worker = worker(TIMING, attempt -> new Result(KEY, RESULT, List.of(issue)))) {
+      worker.handle(FIRST);
+
+      var ordered = inOrder(transport);
+      ordered.verify(transport).store(KEY, RESULT);
+      ordered.verify(transport).publish(issue);
       ordered.verify(transport).publish(RESULT);
       ordered.verify(transport).delete(FIRST);
     }

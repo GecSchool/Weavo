@@ -10,6 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 class ContractJsonTest {
@@ -217,6 +218,22 @@ class ContractJsonTest {
     values.putNull(fieldId);
     contract.readCommand(json.writeValueAsString(command));
     values.remove(fieldId);
+    assertThatThrownBy(() -> contract.readCommand(json.writeValueAsString(command)))
+        .isInstanceOf(ContractViolationException.class);
+  }
+
+  @Test
+  void refusesProjectsAndFieldMappingsThatWouldDuplicateOrLoseSnapshotParticipation()
+      throws IOException {
+    ObjectNode command = (ObjectNode) json.readTree(fixture("collection.execute"));
+    var projects = (ArrayNode) command.get("payload").get("projects");
+    projects.add(projects.get(0).deepCopy());
+    assertThatThrownBy(() -> contract.readCommand(json.writeValueAsString(command)))
+        .isInstanceOf(ContractViolationException.class);
+
+    projects.remove(1);
+    var project = (ObjectNode) projects.get(0);
+    project.putArray("field_connectors");
     assertThatThrownBy(() -> contract.readCommand(json.writeValueAsString(command)))
         .isInstanceOf(ContractViolationException.class);
   }

@@ -11,18 +11,23 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.microsoft.playwright.CDPSession;
+import com.microsoft.playwright.ElementHandle;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.Supplier;
 import okhttp3.Headers;
 import okhttp3.HttpUrl;
 
@@ -112,16 +117,141 @@ public final class BrowserTab implements AutoCloseable {
   }
 
   public SiteAccess.PageSnapshot navigate(String url, String waitSelector) {
+    return move(() -> navigateTo(url), waitSelector).page();
+  }
+
+  /** Finds the exact previously captured item before following its configured detail link. */
+  public DetailSnapshot followLink(
+      Item item, String selector, String attribute, String waitSelector) {
+    return openDetail(
+        item,
+        selector,
+        element -> {
+          var url =
+              (String)
+                  element.evaluate(
+                      "(element, attribute) => {"
+                          + " const value = element.getAttribute(attribute);"
+                          + " return value?.trim() ? new URL(value, document.baseURI).href : null;"
+                          + " }",
+                      attribute);
+          if (url == null) {
+            throw new SiteAccessException(BROWSER_FAILED, "Detail link has no address");
+          }
+          return navigateTo(url);
+        },
+        waitSelector);
+  }
+
+  /** Clicks a verified item control and confirms current-tab document navigation. */
+  public DetailSnapshot clickDetail(Item item, String selector, String waitSelector) {
+    return openDetail(
+        item,
+        selector,
+        element -> {
+          page.waitForNavigation(
+              new Page.WaitForNavigationOptions()
+                  .setWaitUntil(WaitUntilState.COMMIT)
+                  .setTimeout(navigation.timeoutMillis()),
+              () ->
+                  element.click(
+                      new ElementHandle.ClickOptions().setTimeout(navigation.timeoutMillis())));
+          return null;
+        },
+        waitSelector);
+  }
+
+  public SiteAccess.PageSnapshot goBack(String waitSelector) {
+    return move(
+            () -> {
+              page.goBack(
+                  new Page.GoBackOptions()
+                      .setWaitUntil(WaitUntilState.COMMIT)
+                      .setTimeout(navigation.timeoutMillis()));
+              return null;
+            },
+            waitSelector)
+        .page();
+  }
+
+  /** Uses the browser's CSS engine and document order to check the captured list selection. */
+  public List<String> itemHtml(String selector) {
+    budget.check();
+    try {
+      @SuppressWarnings("unchecked")
+      List<String> items =
+          (List<String>)
+              page.evaluate(
+                  "selector => Array.from(document.querySelectorAll(selector), item => item.outerHTML)",
+                  selector);
+      budget.check();
+      return List.copyOf(items);
+    } catch (PlaywrightException error) {
+      throw new SiteAccessException(BROWSER_FAILED, "Could not select browser list items", error);
+    }
+  }
+
+  private DetailSnapshot openDetail(
+      Item item, String selector, Function<ElementHandle, URI> action, String waitSelector) {
+    return move(
+        () -> {
+          int tabCount = page.context().pages().size();
+          // Read the item and its target together, so a changed index cannot select another record.
+          var handle =
+              page.evaluateHandle(
+                  "({url, itemSelector, index, html, selector}) => {"
+                      + " if (document.URL.split('#', 1)[0] !== url) return null;"
+                      + " const item = document.querySelectorAll(itemSelector)[index];"
+                      + " if (item?.outerHTML !== html) return null;"
+                      + " const matches = item.querySelectorAll(selector);"
+                      + " return matches.length === 1 ? matches[0] : null;"
+                      + " }",
+                  Map.of(
+                      "url",
+                      item.pageUrl(),
+                      "itemSelector",
+                      item.selector(),
+                      "index",
+                      item.index(),
+                      "html",
+                      item.html(),
+                      "selector",
+                      selector));
+          try {
+            var element = handle.asElement();
+            if (element == null) {
+              throw new SiteAccessException(BROWSER_FAILED, "Detail target could not be verified");
+            }
+            URI directUrl = action.apply(element);
+            ensureNavigation();
+            if (documentUrl == null || page.context().pages().size() != tabCount) {
+              throw new SiteAccessException(
+                  BROWSER_FAILED, "Detail did not open in the current tab");
+            }
+            return directUrl;
+          } finally {
+            handle.dispose();
+          }
+        },
+        waitSelector);
+  }
+
+  private URI navigateTo(String url) {
+    HttpUrl target = PublicUrls.parse(url);
+    page.navigate(
+        target.toString(),
+        new Page.NavigateOptions()
+            .setWaitUntil(WaitUntilState.COMMIT)
+            .setTimeout(navigation.timeoutMillis()));
+    return target.uri();
+  }
+
+  private DetailSnapshot move(Supplier<URI> action, String waitSelector) {
     navigation = budget.cap(BrowserSession.PAGE_TIMEOUT, BROWSER_TIMEOUT);
     documentUrl = null;
     navigationFailure = null;
     try {
-      HttpUrl target = PublicUrls.parse(url);
-      page.navigate(
-          target.toString(),
-          new Page.NavigateOptions()
-              .setWaitUntil(WaitUntilState.COMMIT)
-              .setTimeout(navigation.timeoutMillis()));
+      URI directUrl = action.get();
       waitUntil(timeout ->
           page.waitForLoadState(
               LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(timeout)));
@@ -130,7 +260,8 @@ public final class BrowserTab implements AutoCloseable {
       if (SiteSession.isChallengePage(html)) {
         throw new SiteAccessException(ACCESS_BLOCKED, "The rendered page is a challenge");
       }
-      return new SiteAccess.PageSnapshot(PublicUrls.parse(page.url()).uri(), html);
+      return new DetailSnapshot(
+          new SiteAccess.PageSnapshot(PublicUrls.parse(page.url()).uri(), html), directUrl);
     } catch (PlaywrightException error) {
       if (navigationFailure != null) {
         throw stopIfNeeded(navigationFailure);
@@ -347,6 +478,21 @@ public final class BrowserTab implements AutoCloseable {
   private static String string(JsonObject object, String key) {
     JsonElement value = object.get(key);
     return value == null || value.isJsonNull() ? null : value.getAsString();
+  }
+
+  /** The requested link is present only after successful link navigation. */
+  public record DetailSnapshot(SiteAccess.PageSnapshot page, URI directUrl) {
+    @Override
+    public String toString() {
+      return "DetailSnapshot";
+    }
+  }
+
+  public record Item(String pageUrl, String selector, int index, String html) {
+    @Override
+    public String toString() {
+      return "BrowserTab.Item[index=" + index + "]";
+    }
   }
 
   @Override
