@@ -33,7 +33,7 @@ class AwsJobTransportTest {
   private final S3Client s3 = mock(S3Client.class, Answers.CALLS_REAL_METHODS);
 
   @Test
-  void servesThreePriorityDeliveriesThenOneScheduledWhileBothQueuesHaveWork() {
+  void startsThreePriorityDeliveriesThenOneScheduledWhileBothQueuesHaveWork() {
     var requests = new ArrayList<ReceiveMessageRequest>();
     respondToQueueLookups();
     doAnswer(
@@ -50,7 +50,7 @@ class AwsJobTransportTest {
     transport.prepare();
 
     for (int i = 0; i < 8; i++) {
-      assertThat(transport.receive(30)).isNotNull();
+      transport.recordExecutionStart(transport.receive(30));
     }
 
     assertThat(requests)
@@ -64,6 +64,57 @@ class AwsJobTransportTest {
             "priority",
             "priority",
             "scheduled");
+  }
+
+  @Test
+  void unclaimedReceiptsNeitherConsumePrioritySlotsNorResetTheScheduledTurn() {
+    respondToQueueLookups();
+    doAnswer(
+            invocation -> {
+              ReceiveMessageRequest request = invocation.getArgument(0);
+              return message(request.queueUrl());
+            })
+        .when(sqs)
+        .receiveMessage(any(ReceiveMessageRequest.class));
+    var transport =
+        new AwsJobTransport(sqs, s3, "bucket", List.of("priority", "scheduled"), "result");
+    transport.prepare();
+
+    for (int index = 0; index < 4; index++) {
+      assertThat(transport.receive(30).queueUrl()).isEqualTo("priority");
+    }
+    for (int index = 0; index < 3; index++) {
+      var delivery = transport.receive(30);
+      assertThat(delivery.queueUrl()).isEqualTo("priority");
+      transport.recordExecutionStart(delivery);
+    }
+    assertThat(transport.receive(30).queueUrl()).isEqualTo("scheduled");
+    var next = transport.receive(30);
+    assertThat(next.queueUrl()).isEqualTo("scheduled");
+    transport.recordExecutionStart(next);
+    assertThat(transport.receive(30).queueUrl()).isEqualTo("priority");
+  }
+
+  @Test
+  void keepsStartingPriorityWorkWhenTheScheduledQueueIsEmpty() {
+    respondToQueueLookups();
+    doAnswer(
+            invocation -> {
+              ReceiveMessageRequest request = invocation.getArgument(0);
+              return request.queueUrl().equals("priority")
+                  ? message("priority")
+                  : ReceiveMessageResponse.builder().build();
+            })
+        .when(sqs)
+        .receiveMessage(any(ReceiveMessageRequest.class));
+    var transport =
+        new AwsJobTransport(sqs, s3, "bucket", List.of("priority", "scheduled"), "result");
+    transport.prepare();
+    for (int index = 0; index < 6; index++) {
+      var delivery = transport.receive(30);
+      assertThat(delivery.queueUrl()).isEqualTo("priority");
+      transport.recordExecutionStart(delivery);
+    }
   }
 
   @Test

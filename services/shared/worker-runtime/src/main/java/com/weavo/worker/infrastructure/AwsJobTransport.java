@@ -87,13 +87,21 @@ public final class AwsJobTransport implements AutoCloseable {
     if (queues.size() == 1) {
       return receiveFrom(0, 5, visibilitySeconds);
     }
-    // Probe both queues before waiting. A busy scheduled queue gets every fourth selection.
+    // Probe both queues before waiting. Prefer scheduled work after three priority starts.
     int preferred = priorityStreak == 3 ? 1 : 0;
     var delivery = receiveFrom(preferred, 0, visibilitySeconds);
     if (delivery == null) {
       delivery = receiveFrom(1 - preferred, 0, visibilitySeconds);
     }
     return delivery != null ? delivery : receiveFrom(preferred, 2, visibilitySeconds);
+  }
+
+  /** Updates this worker's queue preference only when the claimed job starts running. */
+  public void recordExecutionStart(Delivery delivery) {
+    if (queues.size() == 2) {
+      priorityStreak =
+          queues.getFirst().equals(delivery.queueUrl()) ? Math.min(priorityStreak + 1, 3) : 0;
+    }
   }
 
   public void changeVisibility(Delivery delivery, int seconds) {
@@ -162,11 +170,6 @@ public final class AwsJobTransport implements AutoCloseable {
                 .visibilityTimeout(visibilitySeconds));
     if (!response.hasMessages()) {
       return null;
-    }
-    if (index == 0) {
-      priorityStreak = Math.min(priorityStreak + 1, 3);
-    } else {
-      priorityStreak = 0;
     }
     var message = response.messages().getFirst();
     return new Delivery(url, message.receiptHandle(), message.body());

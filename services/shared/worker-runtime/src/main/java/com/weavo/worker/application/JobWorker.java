@@ -153,6 +153,7 @@ public final class JobWorker<P> implements AutoCloseable {
               TimeUnit.MILLISECONDS);
       try {
         attempt.requireOwnership();
+        transport.recordExecutionStart(delivery);
         var result = processor.execute(job, attempt);
         withTransportRetry(attempt, () -> transport.store(result.objectKey(), result.body()));
         for (String notice : result.notices()) {
