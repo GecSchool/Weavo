@@ -3,6 +3,7 @@ package com.weavo.siteaccess;
 import static com.weavo.siteaccess.SiteAccessException.Kind.ACCESS_BLOCKED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.BROWSER_FAILED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.BROWSER_TIMEOUT;
+import static com.weavo.siteaccess.SiteAccessException.Kind.REQUEST_COORDINATION_FAILED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.RESPONSE_TOO_LARGE;
 import static com.weavo.siteaccess.SiteAccessException.Kind.ROBOTS_DENIED;
 
@@ -198,7 +199,8 @@ public final class BrowserTab implements AutoCloseable {
       fulfill(command, reply, redirectTarget);
     } catch (SiteAccessException failure) {
       boolean denied = failure.kind() == ACCESS_BLOCKED || failure.kind() == ROBOTS_DENIED;
-      if (navigationFailure == null && (document || sourceData && denied)) {
+      if (navigationFailure == null
+          && (document || sourceData && denied || failure.kind() == REQUEST_COORDINATION_FAILED)) {
         navigationFailure = failure;
       }
       failRequest(command);

@@ -6,6 +6,7 @@ public final class SiteAccessException extends RuntimeException {
     INVALID_URL,
     ACCESS_BLOCKED,
     ROBOTS_DENIED,
+    REQUEST_COORDINATION_FAILED,
     SITE_UNAVAILABLE,
     HTTP_STATUS,
     HTTP_TIMEOUT,

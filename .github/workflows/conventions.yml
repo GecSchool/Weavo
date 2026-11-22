@@ -90,3 +90,33 @@ jobs:
         run: ./gradlew --no-daemon :worker-runtime:spotlessCheck :worker-runtime:test
       - if: matrix.service == 'analysis'
         run: ./gradlew --no-daemon :site-access:spotlessCheck :site-access:test
+
+  redis-coordination:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: weavo
+          POSTGRES_PASSWORD: weavo-test
+          POSTGRES_DB: weavo
+        ports: ['15432:5432']
+        options: --health-cmd "pg_isready -U weavo" --health-interval 5s --health-timeout 3s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['16379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 5
+    env:
+      WEAVO_SITE_TEST_REDIS_URL: redis://127.0.0.1:16379
+      WEAVO_SITE_TEST_DB_URL: jdbc:postgresql://127.0.0.1:15432/weavo
+      WEAVO_SITE_TEST_DB_USER: weavo
+      WEAVO_SITE_TEST_DB_PASSWORD: weavo-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: PGPASSWORD="$WEAVO_SITE_TEST_DB_PASSWORD" psql -h 127.0.0.1 -p 15432 -U weavo -d weavo -v ON_ERROR_STOP=1 -f infra/local/postgres/02-site-request-leases.sql
+      - run: ./services/analysis/gradlew -p services/shared/site-access --no-daemon redisTest
