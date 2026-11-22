@@ -64,7 +64,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           null,
           error("TECHNICAL_FAILURE", "COLLECTION", "고정 수집 모드에서는 전체 수집만 지원합니다."));
     }
-    if (request.navigation().pagination().type() != PaginationType.NONE
+    if ((request.navigation().listAccess().method() == AccessMethod.BROWSER
+            && request.navigation().pagination().type() != PaginationType.NONE)
         || !request.navigation().initialActions().isEmpty()
         || rules.detailGroups().keySet().stream()
             .anyMatch(rule -> rule.open().target() != Target.CURRENT_TAB)) {
@@ -159,28 +160,18 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     SiteSession sites = siteAccess.open(budget);
     String selector = navigation.itemSelector();
     if (navigation.listAccess().method() == AccessMethod.HTTP) {
-      PageSnapshot list = sites.fetchHtml(navigation.listUrl());
-      state.stage = "LIST_EXTRACTION";
-      var items = selectItems(list, selector);
-      state.listCount = (long) items.size();
-      if (items.isEmpty()) {
+      var first = httpPage(sites, navigation, navigation.listUrl(), state);
+      state.listCount = (long) first.items().size();
+      if (first.items().isEmpty()) {
         return;
       }
       if (rules.detailGroups().isEmpty()) {
-        captureItems(request, rules, budget, snapshot, state, list, items, null, null);
+        collectHttpPages(request, budget, rules, snapshot, state, sites, first, null);
         return;
       }
       try (BrowserSession browser = sites.openBrowser();
           BrowserTab tab = browser.newTab()) {
-        PageSnapshot rendered =
-            tab.navigate(navigation.listUrl(), navigation.listAccess().waitSelector());
-        if (!list.url().equals(rendered.url())) {
-          throw new SiteAccessException(
-              Kind.BROWSER_FAILED, "Browser and HTTP list addresses differ");
-        }
-        var browserList = BrowserList.capture(tab, rendered, selector);
-        verifyBrowserItems(items, browserList.markup());
-        captureItems(request, rules, budget, snapshot, state, list, items, tab, browserList);
+        collectHttpPages(request, budget, rules, snapshot, state, sites, first, tab);
       }
       return;
     }
@@ -190,7 +181,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       PageSnapshot list =
           tab.navigate(navigation.listUrl(), navigation.listAccess().waitSelector());
       state.stage = "LIST_EXTRACTION";
-      var items = selectItems(list, selector);
+      var items = selectItems(HtmlScope.parse(list.html()), selector);
       var browserList = BrowserList.capture(tab, list, selector);
       verifyBrowserItems(items, browserList.markup());
       state.listCount = (long) items.size();
@@ -199,6 +190,61 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       }
     }
   }
+
+  private void collectHttpPages(
+      CollectionExecute request,
+      WorkBudget budget,
+      FixedCollectionFields rules,
+      CollectionSnapshot snapshot,
+      CaptureState state,
+      SiteSession sites,
+      HttpListPage first,
+      BrowserTab tab) {
+    Navigation navigation = request.navigation();
+    var movement = new ListNavigation(navigation.pagination());
+    HttpListPage current = first;
+    while (!current.items().isEmpty()) {
+      state.stage = "LIST_NAVIGATION";
+      movement.observePage(current.items());
+      var browserList = tab == null ? null : browserListForHttp(tab, current.page(), navigation);
+      captureItems(
+          request,
+          rules,
+          budget,
+          snapshot,
+          state,
+          current.page(),
+          current.items(),
+          tab,
+          browserList);
+      state.stage = "LIST_NAVIGATION";
+      String next = movement.nextUrl(current.document());
+      if (next == null) {
+        return;
+      }
+      current = httpPage(sites, navigation, next, state);
+      state.listCount += current.items().size();
+    }
+  }
+
+  private static HttpListPage httpPage(
+      SiteSession sites, Navigation navigation, String url, CaptureState state) {
+    PageSnapshot page = sites.fetchHtml(url);
+    state.stage = "LIST_EXTRACTION";
+    var document = HtmlScope.parse(page.html(), page.url().toString());
+    return new HttpListPage(page, document, selectItems(document, navigation.itemSelector()));
+  }
+
+  private static BrowserList browserListForHttp(
+      BrowserTab tab, PageSnapshot list, Navigation navigation) {
+    var rendered = tab.navigate(list.url().toString(), navigation.listAccess().waitSelector());
+    if (!list.url().equals(rendered.url())) {
+      throw new SiteAccessException(Kind.BROWSER_FAILED, "Browser and HTTP list addresses differ");
+    }
+    return BrowserList.capture(tab, rendered, navigation.itemSelector());
+  }
+
+  private record HttpListPage(PageSnapshot page, HtmlScope document, List<HtmlScope> items) {}
 
   private void captureItems(
       CollectionExecute request,
@@ -216,10 +262,11 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     if (initialBrowserList != null) {
       originalRows = initialBrowserList.document().select(selector);
       if (request.navigation().listAccess().method() == AccessMethod.HTTP) {
+        verifyBrowserItems(items, initialBrowserList.markup());
         verifyBrowserItems(originalRows, initialBrowserList.markup());
       }
     }
-    snapshot.captureList(list);
+    snapshot.captureList(list, request.navigation());
     for (int index = 0; index < items.size(); index++) {
       state.stage = "LIST_EXTRACTION";
       budget.check();
@@ -274,9 +321,9 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     };
   }
 
-  private static List<HtmlScope> selectItems(PageSnapshot list, String selector) {
+  private static List<HtmlScope> selectItems(HtmlScope document, String selector) {
     try {
-      return HtmlScope.parse(list.html()).select(selector);
+      return document.select(selector);
     } catch (IllegalArgumentException | IllegalStateException failure) {
       throw new SiteAccessException(Kind.BROWSER_FAILED, "Invalid list item selector");
     }
