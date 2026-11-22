@@ -1,6 +1,7 @@
 package com.weavo.worker.application;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 /** Interprets service-specific commands and prepares the complete result for one attempt. */
@@ -11,5 +12,13 @@ public interface JobProcessor<P> {
 
   record Job<P>(UUID id, String expiresAt, Duration workBudget, P payload) {}
 
-  record Result(String objectKey, String body) {}
+  record Result(String objectKey, String body, List<String> notices) {
+    public Result(String objectKey, String body) {
+      this(objectKey, body, List.of());
+    }
+
+    public Result {
+      notices = List.copyOf(notices);
+    }
+  }
 }

@@ -155,6 +155,9 @@ public final class JobWorker<P> implements AutoCloseable {
         attempt.requireOwnership();
         var result = processor.execute(job, attempt);
         withTransportRetry(attempt, () -> transport.store(result.objectKey(), result.body()));
+        for (String notice : result.notices()) {
+          withTransportRetry(attempt, () -> transport.publish(notice));
+        }
         withTransportRetry(attempt, () -> transport.publish(result.body()));
         transport.delete(delivery);
       } finally {
