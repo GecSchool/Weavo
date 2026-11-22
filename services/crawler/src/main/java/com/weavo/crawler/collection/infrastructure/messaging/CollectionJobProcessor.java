@@ -2,9 +2,11 @@ package com.weavo.crawler.collection.infrastructure.messaging;
 
 import com.weavo.crawler.collection.application.CollectionJobHandlers;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.JobIssueDetected;
 import com.weavo.worker.application.AttemptContext;
 import com.weavo.worker.application.JobProcessor;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 /** Translates validated collection messages at the worker boundary. */
@@ -31,7 +33,7 @@ public final class CollectionJobProcessor implements JobProcessor<CollectionExec
   @Override
   public Result execute(Job<CollectionExecute> job, AttemptContext attempt)
       throws InterruptedException {
-    var payload = handlers.execute(job.payload(), attempt);
+    var payload = handlers.execute(job, attempt);
     var event =
         new EventEnvelope<>(
             1,
@@ -41,6 +43,36 @@ public final class CollectionJobProcessor implements JobProcessor<CollectionExec
             attempt.now().toString(),
             payload);
     String key = "collections/%s/attempts/%s/result.json".formatted(job.id(), attempt.id());
-    return new Result(key, contract.writeEvent(event));
+    var notices =
+        payload.stopReason().equals("EMPTY_LIST")
+            ? List.of(emptyListNotice(job, attempt, payload))
+            : List.<String>of();
+    return new Result(key, contract.writeEvent(event), notices);
+  }
+
+  private String emptyListNotice(
+      Job<CollectionExecute> job, AttemptContext attempt, Messages.CollectionCompleted payload) {
+    var issue =
+        new JobIssueDetected(
+            payload.attemptId(),
+            "CRAWLER",
+            "SOURCE",
+            payload.sourceId(),
+            null,
+            null,
+            List.of(),
+            null,
+            null,
+            payload.navigationRevision(),
+            payload.error());
+    var event =
+        new EventEnvelope<>(
+            1,
+            "job.issue.detected",
+            UUID.randomUUID().toString(),
+            job.id().toString(),
+            attempt.now().toString(),
+            issue);
+    return contract.writeEvent(event);
   }
 }

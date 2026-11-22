@@ -17,6 +17,7 @@ repositories { mavenCentral() }
 dependencies {
     implementation 'com.weavo:worker-runtime'
     implementation 'com.weavo:site-access'
+    implementation 'com.weavo:field-extraction'
     implementation 'tools.jackson.core:jackson-databind:3.1.7'
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation platform('software.amazon.awssdk:bom:2.31.77')
@@ -24,6 +25,7 @@ dependencies {
     implementation 'software.amazon.awssdk:sqs'
     implementation 'com.microsoft.playwright:playwright:1.55.0'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -47,5 +49,8 @@ tasks.register('browserSmokeTest', Test) {
     useJUnitPlatform()
     systemProperty 'weavo.browser.smoke', 'true'
     environment 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1'
-    filter { includeTestsMatching '*BrowserSmokeTest' }
+    filter {
+        includeTestsMatching '*BrowserSmokeTest'
+        includeTestsMatching '*FixedCollectionBrowserTest'
+    }
 }
