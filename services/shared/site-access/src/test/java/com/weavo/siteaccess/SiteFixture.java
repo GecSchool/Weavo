@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -68,6 +69,14 @@ final class SiteFixture implements AutoCloseable {
           }
           return PublicUrls.resolvePublic(host, ignored -> List.of(local));
         });
+  }
+
+  static RedisHostRequestCoordinator redisCoordinator() {
+    return new RedisHostRequestCoordinator(
+        URI.create(System.getenv("WEAVO_SITE_TEST_REDIS_URL")),
+        System.getenv("WEAVO_SITE_TEST_DB_URL"),
+        System.getenv().getOrDefault("WEAVO_SITE_TEST_DB_USER", "weavo"),
+        System.getenv().getOrDefault("WEAVO_SITE_TEST_DB_PASSWORD", ""));
   }
 
   static WorkBudget work(Duration duration) {

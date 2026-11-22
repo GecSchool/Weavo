@@ -12,6 +12,11 @@ public interface RequestCoordinator {
     /** Implementations may fail when a permit has expired or its ownership is lost. */
     default void check() {}
 
+    default void check(WorkBudget budget) {
+      budget.check();
+      check();
+    }
+
     @Override
     void close();
   }

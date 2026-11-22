@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -194,6 +195,7 @@ class HttpSiteAccessTest {
         var scheduler = Executors.newSingleThreadScheduledExecutor()) {
       var cancelled = new AtomicBoolean();
       var held = new AtomicInteger();
+      var released = new CountDownLatch(1);
       fixture.route(
           "/slow",
           request -> {
@@ -211,13 +213,19 @@ class HttpSiteAccessTest {
           fixture
               .access((target, budget) -> {
                 held.incrementAndGet();
-                return held::decrementAndGet;
+                return () -> {
+                  held.decrementAndGet();
+                  if (cancelled.get()) {
+                    released.countDown();
+                  }
+                };
               })
               .open(work(WORK, cancelled::get));
       var failure =
           assertThrows(SiteAccessException.class, () -> sites.fetchHtml(fixture.url("/slow")));
 
       assertThat(failure.kind()).isEqualTo(CANCELLED);
+      assertThat(released.await(2, TimeUnit.SECONDS)).isTrue();
       assertThat(held).hasValue(0);
       assertThat(fixture.requests).containsExactly("/robots.txt", "/slow");
     }

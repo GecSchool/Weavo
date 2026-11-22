@@ -16,6 +16,8 @@ dependencies {
     implementation 'com.github.crawler-commons:crawler-commons:1.6'
     implementation 'com.microsoft.playwright:playwright:1.55.0'
     implementation 'org.jsoup:jsoup:1.24.1'
+    implementation 'redis.clients:jedis:6.2.0'
+    runtimeOnly 'org.postgresql:postgresql:42.7.10'
 
     testImplementation platform('org.junit:junit-bom:6.0.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -24,7 +26,7 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform { excludeTags 'browser' }
+    useJUnitPlatform { excludeTags 'browser', 'redis' }
 }
 
 spotless { java { googleJavaFormat() } }
@@ -36,4 +38,13 @@ tasks.register('browserTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'browser' }
     environment 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1'
+}
+
+
+tasks.register('redisTest', Test) {
+    group = 'verification'
+    description = 'Exercise host request coordination against a Redis instance.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'redis' }
 }

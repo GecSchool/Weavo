@@ -48,6 +48,16 @@ final class HttpTransport {
             .connectTimeout(REQUEST_TIMEOUT)
             .readTimeout(REQUEST_TIMEOUT)
             .writeTimeout(REQUEST_TIMEOUT)
+            .addInterceptor(chain -> {
+              var control = chain.request().tag(RequestControl.class);
+              try {
+                control.budget().check();
+                control.permit().check(control.budget());
+              } catch (SiteAccessException failure) {
+                throw new RequestStopped(failure);
+              }
+              return chain.proceed(chain.request());
+            })
             .addNetworkInterceptor(chain -> {
               Response response = chain.proceed(chain.request());
               // OkHttp otherwise repeats a 503 with Retry-After: 0 inside the same call.
@@ -62,11 +72,18 @@ final class HttpTransport {
 
   Reply send(Request request, WorkBudget budget, int maxBytes) {
     budget.beforeRequest();
-    try (var permit = coordinator.acquire(request.url().uri(), budget)) {
+    var permit = coordinator.acquire(request.url().uri(), budget);
+    boolean deferredRelease = false;
+    try {
       budget.beforeRequest();
-      permit.check();
       WorkBudget requestBudget = budget.cap(REQUEST_TIMEOUT, HTTP_TIMEOUT);
-      Call call = client.newCall(request);
+      permit.check(requestBudget);
+      Call call =
+          client.newCall(
+              request
+                  .newBuilder()
+                  .tag(RequestControl.class, new RequestControl(requestBudget, permit))
+                  .build());
       call.timeout().timeout(requestBudget.timeoutMillis(), TimeUnit.MILLISECONDS);
       var pending = new CompletableFuture<Reply>();
       call.enqueue(
@@ -92,8 +109,17 @@ final class HttpTransport {
         return await(pending, requestBudget, permit);
       } finally {
         if (!pending.isDone()) {
-          call.cancel();
+          deferredRelease = true;
+          try {
+            call.cancel();
+          } finally {
+            pending.whenComplete((reply, failure) -> permit.close());
+          }
         }
+      }
+    } finally {
+      if (!deferredRelease) {
+        permit.close();
       }
     }
   }
@@ -101,11 +127,11 @@ final class HttpTransport {
   private static Reply await(
       CompletableFuture<Reply> pending, WorkBudget budget, RequestCoordinator.Permit permit) {
     while (true) {
-      permit.check();
+      permit.check(budget);
       try {
         Reply reply = pending.get(Math.min(50, budget.timeoutMillis()), TimeUnit.MILLISECONDS);
         budget.check();
-        permit.check();
+        permit.check(budget);
         return reply;
       } catch (TimeoutException ignored) {
         // Cancellation and ownership are checked even while headers or the body are pending.
@@ -139,6 +165,9 @@ final class HttpTransport {
     if (error instanceof SiteAccessException failure) {
       return failure;
     }
+    if (error instanceof RequestStopped stopped) {
+      return (SiteAccessException) stopped.getCause();
+    }
     if (error instanceof PublicUrls.UnsafeHost) {
       return new SiteAccessException(
           INVALID_URL, "Site host resolved to a non-public address", error);
@@ -161,6 +190,14 @@ final class HttpTransport {
 
   private static SiteAccessException tooLarge() {
     return new SiteAccessException(RESPONSE_TOO_LARGE, "Response exceeded the byte limit");
+  }
+
+  private record RequestControl(WorkBudget budget, RequestCoordinator.Permit permit) {}
+
+  private static final class RequestStopped extends IOException {
+    RequestStopped(SiteAccessException failure) {
+      super(failure);
+    }
   }
 
   record Reply(HttpUrl url, int status, Headers headers, byte[] body) {

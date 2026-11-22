@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -260,6 +261,34 @@ class BrowserSiteAccessTest {
                 () -> tab.navigate(fixture.url("/challenge"), "article.missing"));
         assertThat(failure.kind()).isEqualTo(ACCESS_BLOCKED);
         assertThat(fixture.requests).containsExactly("/robots.txt", "/challenge");
+      }
+    }
+  }
+
+  @Test
+  @EnabledIfEnvironmentVariable(named = "WEAVO_SITE_TEST_REDIS_URL", matches = ".+")
+  @EnabledIfEnvironmentVariable(named = "WEAVO_SITE_TEST_DB_URL", matches = ".+")
+  void reusesTheSameHostLeaseForSequentialBrowserResourcesWithoutHoldingThePage() throws Exception {
+    try (var fixture = new SiteFixture();
+        var coordinator = SiteFixture.redisCoordinator()) {
+      fixture.route("/entry", request -> redirect(request, "/list"));
+      fixture.route(
+          "/list",
+          request ->
+              reply(request, 200, "text/html", "<main></main><script src='/list.js'></script>"));
+      fixture.route(
+          "/list.js",
+          request ->
+              reply(
+                  request,
+                  200,
+                  "text/javascript",
+                  "document.querySelector('main').classList.add('ready')"));
+      try (var browser = fixture.access(coordinator).open(work(WORK)).openBrowser();
+          var tab = browser.newTab()) {
+        assertThat(tab.navigate(fixture.url("/entry"), "main.ready").html())
+            .contains("class=\"ready\"");
+        assertThat(fixture.requests).containsExactly("/robots.txt", "/entry", "/list", "/list.js");
       }
     }
   }

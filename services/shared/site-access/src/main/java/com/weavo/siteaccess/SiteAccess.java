@@ -10,10 +10,6 @@ public final class SiteAccess {
   static final String USER_AGENT = "WeavoBot/1.0";
   private final HttpTransport transport;
 
-  public SiteAccess() {
-    this((target, budget) -> () -> {});
-  }
-
   public SiteAccess(RequestCoordinator coordinator) {
     this(coordinator, host -> PublicUrls.resolvePublic(host, Dns.SYSTEM));
   }
