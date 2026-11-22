@@ -4,6 +4,7 @@ import java.net.URI;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
@@ -83,6 +84,7 @@ public final class ContractValidator {
       invalid(path + ".projects");
     }
     boolean hasFullCollection = false;
+    Set<String> projectSourceIds = new HashSet<>();
     for (int i = 0; i < projects.size(); i++) {
       String itemPath = path + ".projects[" + i + "]";
       JsonNode project = object(projects.get(i), itemPath, false);
@@ -91,6 +93,9 @@ public final class ContractValidator {
           member(project, "project_source_id", itemPath, false),
           itemPath + ".project_source_id",
           false);
+      if (!projectSourceIds.add(project.get("project_source_id").stringValue())) {
+        invalid(itemPath + ".project_source_id");
+      }
       positive(
           member(project, "schema_version", itemPath, false), itemPath + ".schema_version", false);
       positive(
@@ -105,8 +110,9 @@ public final class ContractValidator {
       hasFullCollection |= mode.equals("FULL");
       JsonNode projectSchema = member(project, "schema", itemPath, false);
       schema(projectSchema, itemPath + ".schema", false);
-      fieldConnectors(
-          member(project, "field_connectors", itemPath, false), itemPath + ".field_connectors");
+      var connectors = member(project, "field_connectors", itemPath, false);
+      fieldConnectors(connectors, itemPath + ".field_connectors");
+      requireCompleteConnectors(projectSchema.get("fields"), connectors, itemPath);
       JsonNode latest = member(project, "latest_records", itemPath, false);
       latestRecords(latest, projectSchema, itemPath + ".latest_records");
       if ((mode.equals("FULL") && !latest.isEmpty())
@@ -117,6 +123,20 @@ public final class ContractValidator {
     int maximumDuration = hasFullCollection ? 300 : 60;
     if (payload.get("max_duration_seconds").intValue() > maximumDuration) {
       invalid(path + ".max_duration_seconds");
+    }
+  }
+
+  private static void requireCompleteConnectors(
+      JsonNode fields, JsonNode connectors, String itemPath) {
+    Set<String> unmatched = new HashSet<>();
+    fields.forEach(field -> unmatched.add(field.get("field_id").stringValue()));
+    for (JsonNode connector : connectors) {
+      if (!unmatched.remove(connector.get("field_id").stringValue())) {
+        invalid(itemPath + ".field_connectors");
+      }
+    }
+    if (!unmatched.isEmpty()) {
+      invalid(itemPath + ".field_connectors");
     }
   }
 
