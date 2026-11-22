@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.stream.IntStream;
 
 /** Collects one configured list and its current-tab details for a full collection attempt. */
 public final class FixedCollection implements CollectionJobHandlers.Handler {
@@ -64,11 +65,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           null,
           error("TECHNICAL_FAILURE", "COLLECTION", "고정 수집 모드에서는 전체 수집만 지원합니다."));
     }
-    if ((request.navigation().listAccess().method() == AccessMethod.BROWSER
-            && request.navigation().pagination().type() != PaginationType.NONE)
-        || !request.navigation().initialActions().isEmpty()
-        || rules.detailGroups().keySet().stream()
-            .anyMatch(rule -> rule.open().target() != Target.CURRENT_TAB)) {
+    if (rules.detailGroups().keySet().stream()
+        .anyMatch(rule -> rule.open().target() != Target.CURRENT_TAB)) {
       return result(
           request,
           attempt,
@@ -158,7 +156,6 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       CaptureState state) {
     Navigation navigation = request.navigation();
     SiteSession sites = siteAccess.open(budget);
-    String selector = navigation.itemSelector();
     if (navigation.listAccess().method() == AccessMethod.HTTP) {
       var first = httpPage(sites, navigation, navigation.listUrl(), state);
       state.listCount = (long) first.items().size();
@@ -178,17 +175,94 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
 
     try (BrowserSession browser = sites.openBrowser();
         BrowserTab tab = browser.newTab()) {
-      PageSnapshot list =
-          tab.navigate(navigation.listUrl(), navigation.listAccess().waitSelector());
-      state.stage = "LIST_EXTRACTION";
-      var items = selectItems(HtmlScope.parse(list.html()), selector);
-      var browserList = BrowserList.capture(tab, list, selector);
-      verifyBrowserItems(items, browserList.markup());
-      state.listCount = (long) items.size();
-      if (!items.isEmpty()) {
-        captureItems(request, rules, budget, snapshot, state, list, items, tab, browserList);
+      collectBrowserPages(request, budget, rules, snapshot, state, tab);
+    }
+  }
+
+  private void collectBrowserPages(
+      CollectionExecute request,
+      WorkBudget budget,
+      FixedCollectionFields rules,
+      CollectionSnapshot snapshot,
+      CaptureState state,
+      BrowserTab tab) {
+    Navigation nav = request.navigation();
+    String itemSelector = nav.itemSelector();
+    String listWait = nav.listAccess().waitSelector();
+    var pagination = nav.pagination();
+    var movement = new ListNavigation(pagination);
+    boolean cumulative =
+        pagination.type() == PaginationType.LOAD_MORE || pagination.type() == PaginationType.SCROLL;
+    PageSnapshot page =
+        tab.navigate(nav.listUrl(), nav.initialActions().isEmpty() ? listWait : null);
+    if (!nav.initialActions().isEmpty()) {
+      state.stage = "LIST_NAVIGATION";
+      for (var action : nav.initialActions()) {
+        page = tab.clickList(action.selector(), action.waitSelector(), null);
+      }
+      if (listWait != null) {
+        page = tab.awaitList(listWait);
       }
     }
+
+    int unchanged = 0;
+    state.listCount = 0L;
+    while (page != null) {
+      state.stage = "LIST_EXTRACTION";
+      var browserList = BrowserList.capture(tab, page, itemSelector);
+      var items = selectItems(browserList.document(), itemSelector);
+      verifyBrowserItems(items, browserList.markup());
+      boolean first = state.listCount == 0;
+      if (first && items.isEmpty()) {
+        return;
+      }
+      state.stage = "LIST_NAVIGATION";
+      if (!cumulative && items.isEmpty()) {
+        if (pagination.type() == PaginationType.CLICK_NEXT) {
+          throw new SiteAccessException(
+              Kind.BROWSER_FAILED, "The click did not reach another list");
+        }
+        return;
+      }
+      List<Integer> indices;
+      if (cumulative) {
+        indices = movement.observeCumulativeList(items);
+        unchanged = indices.isEmpty() ? unchanged + 1 : 0;
+        if (unchanged == 2) {
+          return;
+        }
+      } else {
+        movement.observePage(items);
+        indices = itemIndices(items);
+      }
+      state.listCount += indices.size();
+      if (!indices.isEmpty()) {
+        captureItems(
+            request, rules, budget, snapshot, state, page, items, indices, tab, browserList);
+      }
+      state.stage = "LIST_NAVIGATION";
+      page = moveBrowserList(tab, nav, movement, browserList.document());
+    }
+  }
+
+  private static PageSnapshot moveBrowserList(
+      BrowserTab tab, Navigation nav, ListNavigation movement, HtmlScope current) {
+    var rule = nav.pagination();
+    return switch (rule.type()) {
+      case NONE -> null;
+      case NEXT_LINK, URL_TEMPLATE -> {
+        String next = movement.nextUrl(current);
+        String wait =
+            rule.waitSelector() == null ? nav.listAccess().waitSelector() : rule.waitSelector();
+        yield next == null ? null : tab.navigate(next, wait);
+      }
+      case CLICK_NEXT, LOAD_MORE ->
+          movement.hasClickControl(current)
+              ? tab.clickList(rule.selector(), rule.waitSelector(), nav.itemSelector())
+              : null;
+      case SCROLL ->
+          tab.scrollList(rule.scrollContainerSelector(), rule.waitSelector(), nav.itemSelector());
+    };
   }
 
   private void collectHttpPages(
@@ -215,6 +289,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           state,
           current.page(),
           current.items(),
+          itemIndices(current.items()),
           tab,
           browserList);
       state.stage = "LIST_NAVIGATION";
@@ -254,6 +329,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       CaptureState state,
       PageSnapshot list,
       List<HtmlScope> items,
+      List<Integer> indices,
       BrowserTab tab,
       BrowserList initialBrowserList) {
     String selector = request.navigation().itemSelector();
@@ -267,7 +343,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       }
     }
     snapshot.captureList(list, request.navigation());
-    for (int index = 0; index < items.size(); index++) {
+    for (int index : indices) {
       state.stage = "LIST_EXTRACTION";
       budget.check();
       rules.validate(rules.listFields(), items.get(index), budget);
@@ -319,6 +395,10 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           tab.followLink(item, open.selector(), open.urlAttribute(), rule.access().waitSelector());
       case CLICK -> tab.clickDetail(item, open.selector(), rule.access().waitSelector());
     };
+  }
+
+  private static List<Integer> itemIndices(List<HtmlScope> items) {
+    return IntStream.range(0, items.size()).boxed().toList();
   }
 
   private static List<HtmlScope> selectItems(HtmlScope document, String selector) {
