@@ -1,11 +1,5 @@
 package com.weavo.crawler.collection.application;
 
-import com.weavo.crawler.collection.domain.rule.FieldConnector.DetailNavigation;
-import com.weavo.crawler.collection.domain.rule.FieldConnector.OpenType;
-import com.weavo.crawler.collection.domain.rule.FieldConnector.Target;
-import com.weavo.crawler.collection.domain.rule.Navigation;
-import com.weavo.crawler.collection.domain.rule.Navigation.AccessMethod;
-import com.weavo.crawler.collection.domain.rule.Navigation.PaginationType;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionCompleted;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProjectResult;
@@ -13,14 +7,19 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.MessageErr
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.ObjectReference;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.HtmlScope;
+import com.weavo.siteaccess.BrowserList;
 import com.weavo.siteaccess.BrowserSession;
 import com.weavo.siteaccess.BrowserTab;
+import com.weavo.siteaccess.ListNavigation;
 import com.weavo.siteaccess.SiteAccess;
 import com.weavo.siteaccess.SiteAccess.PageSnapshot;
 import com.weavo.siteaccess.SiteAccessException;
 import com.weavo.siteaccess.SiteAccessException.Kind;
 import com.weavo.siteaccess.SiteSession;
 import com.weavo.siteaccess.WorkBudget;
+import com.weavo.siteaccess.rule.Navigation;
+import com.weavo.siteaccess.rule.Navigation.AccessMethod;
+import com.weavo.siteaccess.rule.Navigation.PaginationType;
 import com.weavo.worker.application.AttemptContext;
 import com.weavo.worker.application.JobProcessor.Job;
 import java.util.ArrayList;
@@ -200,7 +199,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       state.stage = "LIST_EXTRACTION";
       var browserList = BrowserList.capture(tab, page, itemSelector);
       var items = selectItems(browserList.document(), itemSelector);
-      verifyBrowserItems(items, browserList.markup());
+      BrowserList.verifyItems(items, browserList.markup());
       boolean first = state.listCount == 0;
       if (first && items.isEmpty()) {
         return;
@@ -230,28 +229,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
             request, rules, budget, snapshot, state, page, items, indices, tab, browserList);
       }
       state.stage = "LIST_NAVIGATION";
-      page = moveBrowserList(tab, nav, movement, browserList.document());
+      page = movement.moveBrowser(tab, nav, browserList.document());
     }
-  }
-
-  private static PageSnapshot moveBrowserList(
-      BrowserTab tab, Navigation nav, ListNavigation movement, HtmlScope current) {
-    var rule = nav.pagination();
-    return switch (rule.type()) {
-      case NONE -> null;
-      case NEXT_LINK, URL_TEMPLATE -> {
-        String next = movement.nextUrl(current);
-        String wait =
-            rule.waitSelector() == null ? nav.listAccess().waitSelector() : rule.waitSelector();
-        yield next == null ? null : tab.navigate(next, wait);
-      }
-      case CLICK_NEXT, LOAD_MORE ->
-          movement.hasClickControl(current)
-              ? tab.clickList(rule.selector(), rule.waitSelector(), nav.itemSelector())
-              : null;
-      case SCROLL ->
-          tab.scrollList(rule.scrollContainerSelector(), rule.waitSelector(), nav.itemSelector());
-    };
   }
 
   private void collectHttpPages(
@@ -327,8 +306,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     if (initialBrowserList != null) {
       originalRows = initialBrowserList.document().select(selector);
       if (request.navigation().listAccess().method() == AccessMethod.HTTP) {
-        verifyBrowserItems(items, initialBrowserList.markup());
-        verifyBrowserItems(originalRows, initialBrowserList.markup());
+        BrowserList.verifyItems(items, initialBrowserList.markup());
+        BrowserList.verifyItems(originalRows, initialBrowserList.markup());
       }
     }
     snapshot.captureList(list, request.navigation());
@@ -344,7 +323,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         var originalRow = originalRows.get(index);
         String originalMarkup = initialBrowserList.markup().get(index);
         var browserItem = current.reselect(selector, index, originalRow, originalMarkup, rule);
-        var detail = openDetail(tab, browserItem, rule);
+        var detail = tab.openDetail(browserItem, rule);
         var page = detail.page();
         rules.validate(entry.getValue(), HtmlScope.parse(page.html()), budget);
         var consumers = FixedCollectionFields.consumers(entry.getValue());
@@ -358,11 +337,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         }
 
         state.stage = "DETAIL_RETURN";
-        var returned =
-            switch (rule.returnRule().type()) {
-              case HISTORY_BACK -> tab.goBack(rule.returnRule().waitSelector());
-              case CLOSE_TAB, CLOSE -> tab.awaitList(rule.returnRule().waitSelector());
-            };
+        var returned = tab.returnToList(rule);
         if (!returned.url().equals(list.url())) {
           throw new SiteAccessException(Kind.BROWSER_FAILED, "Detail did not return to the list");
         }
@@ -380,24 +355,6 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     }
   }
 
-  private static BrowserTab.DetailSnapshot openDetail(
-      BrowserTab tab, BrowserTab.Item item, DetailNavigation rule) {
-    var open = rule.open();
-    String wait = rule.access().waitSelector();
-    return switch (open.target()) {
-      case CURRENT_TAB ->
-          open.type() == OpenType.LINK
-              ? tab.followLink(item, open.selector(), open.urlAttribute(), wait)
-              : tab.clickDetail(item, open.selector(), wait);
-      case NEW_TAB ->
-          open.type() == OpenType.LINK
-              ? tab.followLinkInNewTab(item, open.selector(), open.urlAttribute(), wait)
-              : tab.clickDetailInNewTab(item, open.selector(), wait);
-      case MODAL ->
-          tab.clickDetailInModal(item, open.selector(), wait, rule.returnRule().selector());
-    };
-  }
-
   private static List<Integer> itemIndices(List<HtmlScope> items) {
     return IntStream.range(0, items.size()).boxed().toList();
   }
@@ -407,68 +364,6 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       return document.select(selector);
     } catch (IllegalArgumentException | IllegalStateException failure) {
       throw new SiteAccessException(Kind.BROWSER_FAILED, "Invalid list item selector");
-    }
-  }
-
-  private static void verifyBrowserItems(List<HtmlScope> items, List<String> browserItems) {
-    if (items.size() != browserItems.size()) {
-      throw new SiteAccessException(
-          Kind.BROWSER_FAILED, "Browser and stored list item counts differ");
-    }
-    for (int index = 0; index < items.size(); index++) {
-      if (!items.get(index).matchesMarkup(browserItems.get(index))) {
-        throw new SiteAccessException(Kind.BROWSER_FAILED, "Browser and stored list items differ");
-      }
-    }
-  }
-
-  private record BrowserList(PageSnapshot page, HtmlScope document, List<String> markup) {
-    static BrowserList capture(BrowserTab tab, PageSnapshot page, String selector) {
-      return new BrowserList(
-          page, HtmlScope.parse(page.html(), page.url().toString()), tab.itemHtml(selector));
-    }
-
-    BrowserTab.Item reselect(
-        String selector,
-        int index,
-        HtmlScope original,
-        String originalMarkup,
-        DetailNavigation rule) {
-      try {
-        HtmlScope actual = document.selectItem(selector, index);
-        String actualMarkup = markup.get(index);
-        if (actual.matchesMarkup(actualMarkup)
-            && isSameItem(original, originalMarkup, actual, actualMarkup, rule)) {
-          return new BrowserTab.Item(page.url().toString(), selector, index, actualMarkup);
-        }
-      } catch (IllegalArgumentException
-          | IllegalStateException
-          | IndexOutOfBoundsException failure) {
-        throw unverifiedItem();
-      }
-      throw unverifiedItem();
-    }
-
-    private static boolean isSameItem(
-        HtmlScope original,
-        String originalMarkup,
-        HtmlScope actual,
-        String actualMarkup,
-        DetailNavigation rule) {
-      var open = rule.open();
-      if (open.type() == OpenType.CLICK || open.target() == Target.MODAL) {
-        // A click may use data attributes or handlers without exposing a stable link.
-        return originalMarkup.equals(actualMarkup);
-      }
-      String expected = original.uniqueLink(open.selector(), open.urlAttribute());
-      return expected != null
-          && original.hasSameText(actual)
-          && expected.equals(actual.uniqueLink(open.selector(), open.urlAttribute()));
-    }
-
-    private static SiteAccessException unverifiedItem() {
-      return new SiteAccessException(
-          Kind.BROWSER_FAILED, "Could not reselect the original list item");
     }
   }
 

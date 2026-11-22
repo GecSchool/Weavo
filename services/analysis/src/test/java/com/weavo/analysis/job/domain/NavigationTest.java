@@ -3,6 +3,7 @@ package com.weavo.analysis.job.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.weavo.siteaccess.rule.Navigation;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;

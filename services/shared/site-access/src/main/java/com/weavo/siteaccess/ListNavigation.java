@@ -1,9 +1,10 @@
-package com.weavo.crawler.collection.application;
+package com.weavo.siteaccess;
 
-import com.weavo.crawler.collection.domain.rule.Navigation.Pagination;
 import com.weavo.extraction.HtmlScope;
-import com.weavo.siteaccess.SiteAccessException;
+import com.weavo.siteaccess.SiteAccess.PageSnapshot;
 import com.weavo.siteaccess.SiteAccessException.Kind;
+import com.weavo.siteaccess.rule.Navigation;
+import com.weavo.siteaccess.rule.Navigation.Pagination;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -12,23 +13,23 @@ import java.util.Map;
 import java.util.Set;
 
 /** Advances URL-based rules and rejects a repeated set of list items. */
-final class ListNavigation {
+public final class ListNavigation {
   private final Pagination rule;
   private final Set<List<String>> visited = new HashSet<>();
   private final Map<String, Integer> capturedOccurrences = new HashMap<>();
   private long pageOffset;
 
-  ListNavigation(Pagination rule) {
+  public ListNavigation(Pagination rule) {
     this.rule = rule;
   }
 
-  void observePage(List<HtmlScope> items) {
+  public void observePage(List<HtmlScope> items) {
     if (!visited.add(items.stream().map(HtmlScope::markupFingerprint).sorted().toList())) {
       throw failure("List navigation did not reach a new set of items");
     }
   }
 
-  List<Integer> observeCumulativeList(List<HtmlScope> items) {
+  public List<Integer> observeCumulativeList(List<HtmlScope> items) {
     var occurrences = new HashMap<String, Integer>();
     var indices = new ArrayList<Integer>();
     for (int index = 0; index < items.size(); index++) {
@@ -43,12 +44,12 @@ final class ListNavigation {
     return indices;
   }
 
-  boolean hasClickControl(HtmlScope document) {
+  private boolean hasClickControl(HtmlScope document) {
     HtmlScope control = control(document);
     return control != null && !control.isDisabledControl();
   }
 
-  String nextUrl(HtmlScope document) {
+  public String nextUrl(HtmlScope document) {
     return switch (rule.type()) {
       case NONE -> null;
       case NEXT_LINK -> resolveNextLink(document);
@@ -59,6 +60,25 @@ final class ListNavigation {
         yield rule.urlTemplate().replace("{value}", Long.toString(next));
       }
       default -> throw failure("This list rule does not use URL navigation");
+    };
+  }
+
+  public PageSnapshot moveBrowser(BrowserTab tab, Navigation nav, HtmlScope current) {
+    var rule = nav.pagination();
+    return switch (rule.type()) {
+      case NONE -> null;
+      case NEXT_LINK, URL_TEMPLATE -> {
+        String next = nextUrl(current);
+        String wait =
+            rule.waitSelector() == null ? nav.listAccess().waitSelector() : rule.waitSelector();
+        yield next == null ? null : tab.navigate(next, wait);
+      }
+      case CLICK_NEXT, LOAD_MORE ->
+          hasClickControl(current)
+              ? tab.clickList(rule.selector(), rule.waitSelector(), nav.itemSelector())
+              : null;
+      case SCROLL ->
+          tab.scrollList(rule.scrollContainerSelector(), rule.waitSelector(), nav.itemSelector());
     };
   }
 

@@ -1,8 +1,8 @@
 package com.weavo.analysis.job.infrastructure.messaging;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.weavo.analysis.job.domain.FieldConnector;
-import com.weavo.analysis.job.domain.Navigation;
+import com.weavo.siteaccess.rule.FieldConnector;
+import com.weavo.siteaccess.rule.Navigation;
 import java.util.List;
 import java.util.Map;
 

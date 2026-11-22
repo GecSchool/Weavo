@@ -1,7 +1,5 @@
 package com.weavo.crawler.collection.application;
 
-import com.weavo.crawler.collection.domain.rule.FieldConnector;
-import com.weavo.crawler.collection.domain.rule.FieldConnector.DetailNavigation;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.MessageError;
 import com.weavo.extraction.FieldExtractor;
@@ -9,6 +7,8 @@ import com.weavo.extraction.FieldValueConverter.Type;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.HtmlScope;
 import com.weavo.siteaccess.WorkBudget;
+import com.weavo.siteaccess.rule.FieldConnector;
+import com.weavo.siteaccess.rule.FieldConnector.DetailNavigation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
