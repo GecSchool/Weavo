@@ -6,7 +6,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.CollectionJobProces
 import com.weavo.crawler.collection.infrastructure.messaging.ContractJson;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
 import com.weavo.extraction.FieldValueProcessor;
-import com.weavo.extraction.JavaFieldParser;
+import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.SiteAccess;
 import com.weavo.worker.application.JobWorker;
 import com.weavo.worker.application.WorkerTiming;
@@ -36,7 +36,9 @@ class CrawlerWorkerConfiguration {
       SiteAccess sites,
       Environment environment,
       @Value("${WEAVO_CONTROL_URL:}") String controlUrl,
-      @Value("${WEAVO_SERVICE_TOKEN:}") String serviceToken) {
+      @Value("${WEAVO_SERVICE_TOKEN:}") String serviceToken,
+      @Value("${WEAVO_PARSER_URL:}") String parserUrl,
+      @Value("${WEAVO_PARSER_TOKEN:}") String parserToken) {
     settings.validate();
     var control =
         new ControlAttemptClient(
@@ -54,12 +56,7 @@ class CrawlerWorkerConfiguration {
         var handlers =
             environment.acceptsProfiles(Profiles.of("worker-test"))
                 ? CollectionJobHandlers.forTesting()
-                : CollectionJobHandlers.using(
-                    new FixedCollection(
-                        sites,
-                        new FieldValueProcessor(new JavaFieldParser()),
-                        settings.bucketName(),
-                        transport::storeObject));
+                : collectionHandlers(settings, sites, transport, parserUrl, parserToken);
         var processor = new CollectionJobProcessor(new ContractJson(), handlers);
         return new JobWorker<>(processor, transport, control, timing, Clock.systemUTC());
       } catch (RuntimeException exception) {
@@ -70,6 +67,23 @@ class CrawlerWorkerConfiguration {
       control.close();
       throw exception;
     }
+  }
+
+  private static CollectionJobHandlers collectionHandlers(
+      WorkerSettings settings,
+      SiteAccess sites,
+      AwsJobTransport transport,
+      String parserUrl,
+      String parserToken) {
+    var parser = new IsolatedParserClient(URI.create(parserUrl), parserToken);
+    return CollectionJobHandlers.using(
+        new FixedCollection(
+            sites,
+            budget ->
+                new FieldValueProcessor((code, values) ->
+                    parser.parse(code, values, budget::beforeRequest, budget::remaining)),
+            settings.bucketName(),
+            transport::storeObject));
   }
 
   @Bean

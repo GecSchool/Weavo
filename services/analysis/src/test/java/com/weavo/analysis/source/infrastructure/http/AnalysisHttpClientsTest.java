@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.weavo.analysis.source.application.SourceCandidateGenerator;
 import com.weavo.extraction.FieldValueProcessor.ParserUnavailable;
 import com.weavo.extraction.JavaFieldParser.Stage;
+import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.WorkBudget;
 import com.weavo.siteaccess.rule.FieldConnector.Location;
 import java.io.IOException;
@@ -123,9 +124,14 @@ class AnalysisHttpClientsTest {
                   List.of(
                       Map.of("item_key", key, "status", "FAILED", "failure", "EXECUTION_LIMIT"))));
         })) {
+      var budget = budget();
       var result =
           new IsolatedParserClient(server.url(), "fixture-token")
-              .parse("return rawValues.get(0);", List.of("name"), budget());
+              .parse(
+                  "return rawValues.get(0);",
+                  List.of("name"),
+                  budget::beforeRequest,
+                  budget::remaining);
       assertThat(calls.get()).isEqualTo(2);
       assertThat(firstKey.get()).isEqualTo(nextKey.get());
       assertThat(observed.get().at("/items/0/raw_values/0").asText()).isEqualTo("name");
@@ -152,7 +158,10 @@ class AnalysisHttpClientsTest {
                             "value",
                             "unrelated")))))) {
       var parser = new IsolatedParserClient(server.url(), "fixture-token");
-      assertThatThrownBy(() -> parser.parse("return null;", List.of("value"), budget()))
+      var budget = budget();
+      assertThatThrownBy(() ->
+              parser.parse(
+                  "return null;", List.of("value"), budget::beforeRequest, budget::remaining))
           .isInstanceOf(ParserUnavailable.class)
           .hasMessage("INVALID_PARSER_RESPONSE");
     }

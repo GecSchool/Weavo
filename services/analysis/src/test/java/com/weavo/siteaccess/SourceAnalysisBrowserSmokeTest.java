@@ -6,11 +6,11 @@ import com.sun.net.httpserver.HttpServer;
 import com.weavo.analysis.source.application.SourceAnalyzer;
 import com.weavo.analysis.source.application.SourceCandidate;
 import com.weavo.analysis.source.application.SourceCandidateGenerator;
-import com.weavo.analysis.source.infrastructure.http.IsolatedParserClient;
 import com.weavo.analysis.source.infrastructure.http.OpenAiCandidateGenerator;
 import com.weavo.extraction.FieldValueConverter.Type;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.JavaFieldParser;
+import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.rule.FieldConnector;
 import com.weavo.siteaccess.rule.FieldConnector.DetailAccess;
 import com.weavo.siteaccess.rule.FieldConnector.DetailAccessMethod;
@@ -58,7 +58,9 @@ class SourceAnalysisBrowserSmokeTest {
           new IsolatedParserClient(
               URI.create(System.getenv("WEAVO_PARSER_URL")), System.getenv("WEAVO_PARSER_TOKEN"));
       var budget = budget(Duration.ofMinutes(5));
-      var fields = new FieldValueProcessor((code, values) -> parser.parse(code, values, budget));
+      var fields =
+          new FieldValueProcessor((code, values) ->
+              parser.parse(code, values, budget::beforeRequest, budget::remaining));
       var analyzer = new SourceAnalyzer(site.access(), fields, generator);
       var result =
           analyzer.analyze(

@@ -1,8 +1,8 @@
 package com.weavo.analysis;
 
 import com.weavo.analysis.source.application.SourceDiscovery;
-import com.weavo.analysis.source.infrastructure.http.IsolatedParserClient;
 import com.weavo.analysis.source.infrastructure.http.OpenAiCandidateGenerator;
+import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.SiteAccess;
 import java.net.URI;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +24,10 @@ class SourceDiscoveryConfiguration {
       @Value("${WEAVO_PARSER_TOKEN:}") String parserToken) {
     var generator = new OpenAiCandidateGenerator(apiKey, model);
     var parser = new IsolatedParserClient(URI.create(parserService), parserToken);
-    return new SourceDiscovery(sites, generator, parser::parse);
+    return new SourceDiscovery(
+        sites,
+        generator,
+        (code, values, budget) ->
+            parser.parse(code, values, budget::beforeRequest, budget::remaining));
   }
 }

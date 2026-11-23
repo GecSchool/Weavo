@@ -6,6 +6,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.Collection
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.MessageError;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.ObjectReference;
 import com.weavo.extraction.FieldValueProcessor;
+import com.weavo.extraction.FieldValueProcessor.ParserUnavailable;
 import com.weavo.extraction.HtmlScope;
 import com.weavo.siteaccess.BrowserList;
 import com.weavo.siteaccess.BrowserSession;
@@ -27,12 +28,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 
 /** Collects one configured list and its current-tab details for a full collection attempt. */
 public final class FixedCollection implements CollectionJobHandlers.Handler {
   private final SiteAccess siteAccess;
-  private final FieldValueProcessor fields;
+  private final Function<WorkBudget, FieldValueProcessor> fields;
   private final String bucket;
   private final SnapshotUpload store;
 
@@ -43,6 +45,14 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
 
   public FixedCollection(
       SiteAccess siteAccess, FieldValueProcessor fields, String bucket, SnapshotUpload upload) {
+    this(siteAccess, budget -> fields, bucket, upload);
+  }
+
+  public FixedCollection(
+      SiteAccess siteAccess,
+      Function<WorkBudget, FieldValueProcessor> fields,
+      String bucket,
+      SnapshotUpload upload) {
     this.siteAccess = siteAccess;
     this.fields = fields;
     this.bucket = bucket;
@@ -53,7 +63,6 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
   public CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
       throws InterruptedException {
     var request = job.payload();
-    var rules = new FixedCollectionFields(request.projects(), fields);
     if (request.projects().stream().anyMatch(project -> !project.collectionMode().equals("FULL"))) {
       return result(
           request,
@@ -68,6 +77,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     var budget =
         new WorkBudget(
             attempt.workDeadline(), attempt::isCancellationRequested, attempt::requireWorkAllowed);
+    var rules = new FixedCollectionFields(request.projects(), fields.apply(budget));
     try (var snapshot = new CollectionSnapshot(bucket, job.id(), attempt)) {
       var state = new CaptureState();
       String reason = "END_OF_LIST";
@@ -90,6 +100,15 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         reason = "TIME_LIMIT";
       } catch (FixedCollectionFields.InvalidField failure) {
         return fieldFailure(request, attempt, state, failure);
+      } catch (ParserUnavailable failure) {
+        return result(
+            request,
+            attempt,
+            "TECHNICAL_FAILURE",
+            state.listCount,
+            null,
+            null,
+            error("TECHNICAL_FAILURE", "PARSER_CALL", "격리 파서의 응답을 확인하지 못했습니다."));
       }
       if (state.listCount != null && state.listCount == 0) {
         return result(

@@ -15,6 +15,7 @@ import com.weavo.extraction.FieldExtractor;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.HtmlScope;
 import com.weavo.extraction.JavaFieldParser;
+import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.rule.FieldConnector;
 import com.weavo.siteaccess.rule.Navigation;
 import com.weavo.siteaccess.rule.Navigation.Pagination;
@@ -24,6 +25,7 @@ import com.weavo.worker.application.JobProcessor.Job;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +35,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,6 +45,109 @@ import tools.jackson.databind.json.JsonMapper;
 class HttpListNavigationTest {
   private static final String NEXT = "<a class=next href='?page=2'>다음</a>";
   private static final String FIELD_ID = "95f7d7de-ec00-4fbe-b430-fa3a79763c18";
+
+  @ParameterizedTest
+  @ValueSource(strings = {"INITIAL", "REVISION"})
+  @EnabledIfEnvironmentVariable(named = "WEAVO_PARSER_TEST_URL", matches = ".+")
+  void validatesCrawledValuesThroughTheIsolatedExecutor(String reason) throws Exception {
+    try (var site = new TestSite(Map.of("/list", page("금액42", "")))) {
+      var parser =
+          new IsolatedParserClient(
+              URI.create(System.getenv("WEAVO_PARSER_TEST_URL")),
+              System.getenv("WEAVO_PARSER_TEST_TOKEN"));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          remoteCollector(site, stored, parser)
+              .execute(jobWithParser(site.url("/list"), reason), attempt());
+
+      assertThat(result.status()).isEqualTo("SUCCEEDED");
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(1);
+      assertThat(stored).containsKey(result.snapshotRef().key());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {401, 503})
+  void classifiesExecutorFailureWithoutTreatingTheRecordAsEmpty(int httpStatus) throws Exception {
+    var calls = new AtomicInteger();
+    var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    server.createContext(
+        "/internal/v1/parser:execute",
+        exchange -> {
+          try (exchange) {
+            calls.incrementAndGet();
+            exchange.sendResponseHeaders(httpStatus, -1);
+          }
+        });
+    server.start();
+    try (var site = new TestSite(Map.of("/list", page("금액42", "")))) {
+      var parser =
+          new IsolatedParserClient(
+              URI.create("http://localhost:" + server.getAddress().getPort()), "fixture-token");
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          remoteCollector(site, stored, parser)
+              .execute(jobWithParser(site.url("/list"), "INITIAL"), attempt());
+
+      assertThat(result.error().code()).isEqualTo("TECHNICAL_FAILURE");
+      assertThat(result.error().stage()).isEqualTo("PARSER_CALL");
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isNull();
+      assertThat(result.snapshotRef()).isNull();
+      assertThat(stored).isEmpty();
+      assertThat(calls.get()).isEqualTo(httpStatus == 503 ? 2 : 1);
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  private static FixedCollection remoteCollector(
+      TestSite site, Map<String, byte[]> stored, IsolatedParserClient parser) {
+    return new FixedCollection(
+        site.access((uri, budget) -> () -> {}),
+        budget ->
+            new FieldValueProcessor((code, values) ->
+                parser.parse(code, values, budget::beforeRequest, budget::remaining)),
+        "artifacts",
+        (key, type, bytes) -> stored.put(key, bytes));
+  }
+
+  private static Job<CollectionExecute> jobWithParser(String url, String reason) {
+    var base = job(url, nextLink());
+    var payload = base.payload();
+    var target = payload.projects().getFirst();
+    var schema =
+        new Schema(
+            List.of(new SchemaField(FIELD_ID, "price", null, null, null, "number", false, null)));
+    var connector =
+        new FieldConnector(
+            FIELD_ID,
+            FieldConnector.Location.LIST,
+            "h2",
+            new FieldConnector.Extract(FieldConnector.ExtractType.TEXT, null),
+            new FieldConnector.Parser("return rawValues.getFirst().substring(2);"),
+            null);
+    var project =
+        new CollectionProject(
+            target.projectId(),
+            target.projectSourceId(),
+            target.schemaVersion(),
+            target.connectorRevision(),
+            target.collectionMode(),
+            schema,
+            List.of(connector),
+            target.latestRecords());
+    return new Job<>(
+        base.id(),
+        base.expiresAt(),
+        base.workBudget(),
+        new CollectionExecute(
+            payload.sourceId(),
+            reason,
+            payload.maxDurationSeconds(),
+            payload.navigationRevision(),
+            payload.navigation(),
+            List.of(project)));
+  }
 
   @ParameterizedTest
   @ValueSource(strings = {"", "<a class=next aria-disabled=true href='?page=3'>다음</a>"})
