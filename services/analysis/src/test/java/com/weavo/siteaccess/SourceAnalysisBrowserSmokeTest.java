@@ -93,6 +93,69 @@ class SourceAnalysisBrowserSmokeTest {
     }
   }
 
+  @Test
+  void retriesWithTheObservedDetailDomWhenAFieldSelectorDoesNotMatch() throws Exception {
+    try (var site = new TestSite(false)) {
+      var calls = new AtomicInteger();
+      var analyzer =
+          analyzer(
+              site,
+              (input, budget) -> {
+                var valid = candidate(input.listUrl(), "h2", null, "a.next");
+                if (calls.incrementAndGet() > 1) {
+                  assertThat(input.observedScreens().get("DETAIL")).contains("Body 1");
+                  assertThat(input.previousFailure().candidateKey()).isEqualTo("body");
+                  return valid;
+                }
+                var proposed = new java.util.ArrayList<>(valid.fields());
+                var body = proposed.get(1);
+                var connector = body.connector();
+                proposed.set(
+                    1,
+                    new SourceCandidate.Field(
+                        body.name(),
+                        body.type(),
+                        body.nullable(),
+                        body.reason(),
+                        new FieldConnector(
+                            connector.fieldId(),
+                            connector.location(),
+                            ".not-the-body",
+                            connector.extract(),
+                            connector.parser(),
+                            connector.detailNavigation())));
+                return new SourceCandidate(valid.navigation(), proposed);
+              });
+      var output = analyzer.analyze(site.url(), "공지 본문 수집", budget(Duration.ofSeconds(12)));
+      assertThat(output.failure()).isNull();
+      assertThat(output.samples().getFirst()).containsEntry("body", "Body 1");
+      assertThat(calls.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void keepsExecutorTransportFailureOutOfCandidateCorrection() throws Exception {
+    try (var site = new TestSite(false)) {
+      var calls = new AtomicInteger();
+      var fields =
+          new FieldValueProcessor((code, values) -> {
+            throw new FieldValueProcessor.ParserUnavailable("HTTP_503");
+          });
+      var analyzer =
+          new SourceAnalyzer(
+              site.access(),
+              fields,
+              (input, budget) -> {
+                calls.incrementAndGet();
+                return candidate(input.listUrl(), "h2", "return rawValues.getFirst();", "a.next");
+              });
+      var output = analyzer.analyze(site.url(), "공지 수집", budget(Duration.ofSeconds(12)));
+      assertThat(output.failure().stage()).isEqualTo("PARSER_CALL");
+      assertThat(output.samples()).isEmpty();
+      assertThat(calls.get()).isEqualTo(1);
+    }
+  }
+
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
   void rejectsInvalidJavaAndNavigationWithoutReturningApprovedSamples(boolean invalidJava)

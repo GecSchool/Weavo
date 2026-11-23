@@ -57,3 +57,14 @@ src/main/java/com/weavo/analysis/
 ```
 
 `job.application`의 처리기는 작업 목적에 따라 실행을 분기합니다. `AnalysisJobProcessor`는 JSON 메시지를 읽고 결과를 변환합니다. 두 서비스에서 동일한 폴링·lease 관리·결과 전달은 `services/shared/worker-runtime`의 코드로 실행합니다. 공통 Java 필드 파서는 `services/shared/field-extraction`에 구현되어 있습니다. Analysis의 후보 검증에 격리 파서 실행기를 연결하는 작업은 남아 있습니다.
+
+## 초기 분석 후보와 외부 호출
+
+`OPENAI_API_KEY`를 Analysis 프로세스의 환경 변수로 설정합니다. 기본 모델은
+`WEAVO_ANALYSIS_MODEL=gpt-6.1-terra`입니다. 변경할 때 후보 형식과 브라우저 검증은 동일하게 적용합니다.
+`WEAVO_PARSER_URL`에는 격리 파서 게이트웨이 주소를, `WEAVO_PARSER_TOKEN`에는 내부 호출
+Bearer 토큰을 설정합니다. 서비스에서 생성된 Java 코드는 해당 게이트웨이로 전달합니다.
+
+실제 Terra 호출을 확인하려면 환경 변수에 키를 설정하고
+`WEAVO_RUN_OPENAI_SMOKE=1 ./gradlew test --tests '*AnalysisHttpClientsTest.realTerraAcceptsTheCandidateSchemaAndReturnsUsableListRules'`를
+실행합니다. 이 검사는 고정 HTML 샘플을 API에 보내며 API 사용료가 발생합니다.

@@ -19,6 +19,7 @@ dependencies {
     implementation 'com.weavo:site-access'
     implementation 'com.weavo:field-extraction'
     implementation 'tools.jackson.core:jackson-databind:3.1.7'
+    implementation 'org.jsoup:jsoup:1.24.1'
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation platform('software.amazon.awssdk:bom:2.31.77')
     implementation 'software.amazon.awssdk:s3'

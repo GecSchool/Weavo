@@ -54,7 +54,8 @@ public final class WorkBudget {
     return remaining.isNegative() ? Duration.ZERO : remaining;
   }
 
-  void beforeRequest() {
+  /** Checks the budget and asks the worker to confirm permission for a new request. */
+  public void beforeRequest() {
     check();
     try {
       permission.check(deadline);

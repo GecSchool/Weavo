@@ -40,6 +40,7 @@ public final class SourceAnalyzer {
 
   public Result analyze(String url, String purpose, WorkBudget budget) throws InterruptedException {
     Failure failure = null;
+    Map<String, String> observedScreens = new LinkedHashMap<>();
     try (var browser = sites.open(budget).openBrowser();
         var tab = browser.newTab()) {
       var initial = tab.navigate(url);
@@ -50,7 +51,7 @@ public final class SourceAnalyzer {
           previous =
               generator.propose(
                   new SourceCandidateGenerator.Input(
-                      url, purpose, initial.html(), previous, failure),
+                      url, purpose, initial.html(), previous, failure, Map.copyOf(observedScreens)),
                   budget);
           budget.check();
           if (previous == null) {
@@ -60,7 +61,12 @@ public final class SourceAnalyzer {
                 failure == null ? new Failure("CANDIDATE", null, "NO_PROPOSAL") : failure);
           }
           var candidate = browserCandidate(previous, url);
-          return new Result(candidate, validate(browser, tab, candidate, budget), null);
+          return new Result(
+              candidate, validate(browser, tab, candidate, budget, observedScreens), null);
+        } catch (SourceCandidateGenerator.Unavailable error) {
+          return new Result(null, List.of(), new Failure("LLM_CALL", null, error.getMessage()));
+        } catch (FieldValueProcessor.ParserUnavailable error) {
+          return new Result(null, List.of(), new Failure("PARSER_CALL", null, error.getMessage()));
         } catch (InvalidCandidate error) {
           failure = error.failure();
         } catch (CancellationException error) {
@@ -115,7 +121,11 @@ public final class SourceAnalyzer {
   }
 
   private List<Map<String, Object>> validate(
-      BrowserSession browser, BrowserTab tab, SourceCandidate candidate, WorkBudget budget) {
+      BrowserSession browser,
+      BrowserTab tab,
+      SourceCandidate candidate,
+      WorkBudget budget,
+      Map<String, String> observedScreens) {
     var rule = candidate.navigation();
     var firstPage = openList(tab, rule);
     var first = checkedList(tab, firstPage, rule.itemSelector());
@@ -142,7 +152,7 @@ public final class SourceAnalyzer {
     }
     int limit =
         detailFields.isEmpty()
-            ? firstItems.size()
+            ? Math.min(firstItems.size(), 50)
             : Math.min(firstItems.size(), DETAIL_SAMPLE_LIMIT / detailFields.size());
     var samples = new ArrayList<Map<String, Object>>();
     var current = first;
@@ -156,6 +166,7 @@ public final class SourceAnalyzer {
         var item =
             current.reselect(rule.itemSelector(), index, original, originalMarkup, detailRule);
         var detail = tab.openDetail(item, detailRule);
+        observedScreens.put("DETAIL", detail.page().html());
         var scope = HtmlScope.parse(detail.page().html(), detail.page().url().toString());
         for (var field : entry.getValue()) {
           values.put(field.connector().fieldId(), extract(field, scope));
@@ -170,7 +181,7 @@ public final class SourceAnalyzer {
       samples.add(Collections.unmodifiableMap(values));
     }
 
-    verifyNextPage(tab, candidate, firstItems, current, budget);
+    verifyNextPage(tab, candidate, firstItems, current, budget, observedScreens);
     return List.copyOf(samples);
   }
 
@@ -219,7 +230,8 @@ public final class SourceAnalyzer {
       SourceCandidate candidate,
       List<HtmlScope> firstItems,
       BrowserList first,
-      WorkBudget budget) {
+      WorkBudget budget,
+      Map<String, String> observedScreens) {
     var rule = candidate.navigation();
     var type = rule.pagination().type();
     if (type == PaginationType.NONE) {
@@ -238,6 +250,7 @@ public final class SourceAnalyzer {
     if (next == null) {
       throw invalid("LIST_NAVIGATION", null, "NEXT_SCREEN_NOT_REACHED");
     }
+    observedScreens.put("NEXT_LIST", next.html());
     var nextList = checkedList(tab, next, rule.itemSelector());
     var nextItems = nextList.document().select(rule.itemSelector());
     if (nextItems.isEmpty()) {
