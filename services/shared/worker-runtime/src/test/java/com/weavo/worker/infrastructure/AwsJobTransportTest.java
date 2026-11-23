@@ -9,13 +9,20 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.Answers;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -31,6 +38,65 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 class AwsJobTransportTest {
   private final SqsClient sqs = mock(SqsClient.class, Answers.CALLS_REAL_METHODS);
   private final S3Client s3 = mock(S3Client.class, Answers.CALLS_REAL_METHODS);
+
+  @Test
+  @EnabledIfEnvironmentVariable(named = "WEAVO_QUEUE_TEST_AWS", matches = ".+")
+  void countsStartsPerWorkerAcrossTwoRealQueues() {
+    URI endpoint = URI.create(System.getenv("WEAVO_QUEUE_TEST_AWS"));
+    String prefix = "weavo-queue-test-" + UUID.randomUUID();
+    var names = List.of(prefix + "-priority", prefix + "-scheduled");
+    String results = prefix + "-results";
+    var queueUrls = new ArrayList<String>();
+    try (var client =
+        SqsClient.builder()
+            .endpointOverride(endpoint)
+            .region(Region.US_EAST_1)
+            .credentialsProvider(
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test")))
+            .build()) {
+      try {
+        for (String name : List.of(names.getFirst(), names.getLast(), results)) {
+          queueUrls.add(client.createQueue(request -> request.queueName(name)).queueUrl());
+        }
+        try (var first =
+                AwsJobTransport.open(
+                    "us-east-1", endpoint, "unused", names, results, Duration.ofSeconds(5));
+            var second =
+                AwsJobTransport.open(
+                    "us-east-1", endpoint, "unused", names, results, Duration.ofSeconds(5))) {
+          first.prepare();
+          second.prepare();
+          for (int index = 0; index < 5; index++) {
+            client.sendMessage(
+                request -> request.queueUrl(queueUrls.getFirst()).messageBody("priority"));
+          }
+          client.sendMessage(
+              request -> request.queueUrl(queueUrls.get(1)).messageBody("scheduled"));
+
+          var unclaimed = first.receive(30);
+          assertThat(unclaimed.body()).isEqualTo("priority");
+          first.delete(unclaimed);
+          for (int index = 0; index < 3; index++) {
+            var delivery = first.receive(30);
+            assertThat(delivery.body()).isEqualTo("priority");
+            first.recordExecutionStart(delivery);
+            first.delete(delivery);
+          }
+          var otherWorker = second.receive(30);
+          assertThat(otherWorker.body()).isEqualTo("priority");
+          second.recordExecutionStart(otherWorker);
+          second.delete(otherWorker);
+
+          var scheduled = first.receive(30);
+          assertThat(scheduled.body()).isEqualTo("scheduled");
+          first.recordExecutionStart(scheduled);
+          first.delete(scheduled);
+        }
+      } finally {
+        queueUrls.forEach(url -> client.deleteQueue(request -> request.queueUrl(url)));
+      }
+    }
+  }
 
   @Test
   void startsThreePriorityDeliveriesThenOneScheduledWhileBothQueuesHaveWork() {
