@@ -160,7 +160,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       if (first.items().isEmpty()) {
         return;
       }
-      if (rules.detailGroups().isEmpty()) {
+      if (!rules.hasDetails(state.progress::participates)) {
         collectHttpPages(request, budget, rules, snapshot, state, sites, first, null);
         return;
       }
@@ -274,7 +274,10 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     while (!current.items().isEmpty()) {
       state.stage = "LIST_NAVIGATION";
       movement.observePage(current.items());
-      var browserList = tab == null ? null : browserListForHttp(tab, current.page(), navigation);
+      var browserList =
+          tab != null && rules.hasDetails(state.progress::participates)
+              ? browserListForHttp(tab, current.page(), navigation)
+              : null;
       captureItems(
           request,
           rules,
@@ -355,16 +358,11 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       rules.extract(rules.listFields(), items.get(index), budget, values);
       var details = new ArrayList<CollectionSnapshot.Detail>();
       Map<String, List<String>> directLinks = new LinkedHashMap<>();
-      for (var entry : rules.detailGroups().entrySet()) {
-        var detailFields =
-            entry.getValue().stream()
-                .filter(field -> values.containsKey(field.projectSourceId()))
-                .toList();
-        if (detailFields.isEmpty()) {
-          continue;
-        }
+      state.stage = "DETAIL_NAVIGATION";
+      for (var visit : rules.detailVisits(items.get(index), values.keySet())) {
+        var detailFields = visit.fields();
+        var rule = visit.rule();
         state.stage = "DETAIL_NAVIGATION";
-        var rule = entry.getKey();
         var originalRow = originalRows.get(index);
         String originalMarkup = initialBrowserList.markup().get(index);
         var browserItem = current.reselect(selector, index, originalRow, originalMarkup, rule);
