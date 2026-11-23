@@ -1481,11 +1481,13 @@
           "type": "string",
           "examples": [
             "SUCCEEDED",
+            "PARTIAL",
             "FAILED"
           ]
         },
         "can_ingest": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "일반 반복 수집의 PARTIAL은 정상 레코드가 남고 스냅샷이 있으면 true다."
         },
         "normal_extracted_record_count": {
           "anyOf": [

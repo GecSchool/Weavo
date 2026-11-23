@@ -12,6 +12,7 @@ public final class SiteAccessException extends RuntimeException {
     HTTP_TIMEOUT,
     BROWSER_TIMEOUT,
     BROWSER_FAILED,
+    DETAIL_CONTROL_UNAVAILABLE,
     WORK_LIMIT,
     CANCELLED,
     REDIRECT_LIMIT,

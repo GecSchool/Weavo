@@ -307,6 +307,107 @@ class FixedCollectionBrowserTest {
   }
 
   @Test
+  void missingDetailControlStopsOnlyItsProjectAndKeepsTheListUsable() throws Exception {
+    try (var site = new TestSite(LIST)) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var normal = payload.projects().getLast();
+      var rule = normal.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              BODY,
+              ".body",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.LINK, ".missing", "href", Target.CURRENT_TAB),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, normal));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("PARTIAL");
+      assertThat(result.projectResults().getFirst().error().stage()).isEqualTo("DETAIL_NAVIGATION");
+      assertThat(result.projectResults().getLast().canIngest()).isTrue();
+      assertThat(site.detailRequests.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void missingModalButtonOnlyStopsItsProject() throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", false))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL);
+      var payload = base.payload();
+      var normal = payload.projects().getFirst();
+      var rule = normal.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              AUTHOR,
+              ".author",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.CLICK, ".missing", null, Target.MODAL),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, normal));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status())
+          .withFailMessage("actual status=%s, top-level error=%s", result.status(), result.error())
+          .isEqualTo("PARTIAL");
+      assertThat(result.projectResults().getLast().canIngest()).isTrue();
+    }
+  }
+
+  @Test
+  void completedPreservesDetailFailureFieldsWhenIssueArrivesLater() throws Exception {
+    try (var site = new TestSite(LIST)) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var good = payload.projects().getLast();
+      var rule = good.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              BODY,
+              ".body",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.LINK, ".missing", "href", Target.CURRENT_TAB),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, good));
+      var contract = new ContractJson();
+      var processor =
+          new CollectionJobProcessor(
+              contract,
+              CollectionJobHandlers.using(collection(site.access(), (key, mime, bytes) -> {})));
+      var output =
+          processor.execute(
+              new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+              attempt(Duration.ofSeconds(15)));
+      var result =
+          contract.eventPayload(contract.readEvent(output.body()), CollectionCompleted.class);
+      var issue =
+          contract.eventPayload(
+              contract.readEvent(output.notices().getFirst()), JobIssueDetected.class);
+      assertThat(issue.fieldIds()).containsExactly(BODY);
+      var completedError = result.projectResults().getFirst().error();
+      assertThat(completedError.details()).containsEntry("field_ids", issue.fieldIds());
+      assertThat(completedError).isEqualTo(issue.error());
+    }
+  }
+
+  @Test
   void sourceUrlRemainsTheWorkingLinkWhenTheDetailPageReplacesItsAddress() throws Exception {
     try (var site = new TestSite(LIST)) {
       site.detailReplacesUrl = true;

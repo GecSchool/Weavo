@@ -2,13 +2,19 @@ package com.weavo.siteaccess;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.sun.net.httpserver.HttpServer;
+import com.weavo.crawler.collection.application.CollectionJobHandlers;
 import com.weavo.crawler.collection.application.FixedCollection;
+import com.weavo.crawler.collection.infrastructure.messaging.CollectionJobProcessor;
+import com.weavo.crawler.collection.infrastructure.messaging.ContractJson;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionCompleted;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.JobIssueDetected;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.LatestRecord;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.Schema;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.SchemaField;
@@ -30,6 +36,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +55,7 @@ class HttpListNavigationTest {
   private static final String FIELD_ID = "95f7d7de-ec00-4fbe-b430-fa3a79763c18";
 
   @ParameterizedTest
-  @ValueSource(strings = {"INITIAL", "REVISION"})
+  @ValueSource(strings = {"INITIAL", "REVISION", "SCHEDULED"})
   @EnabledIfEnvironmentVariable(named = "WEAVO_PARSER_TEST_URL", matches = ".+")
   void validatesCrawledValuesThroughTheIsolatedExecutor(String reason) throws Exception {
     try (var site = new TestSite(Map.of("/list", page("금액42", "")))) {
@@ -63,7 +70,13 @@ class HttpListNavigationTest {
 
       assertThat(result.status()).isEqualTo("SUCCEEDED");
       assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(1);
-      assertThat(stored).containsKey(result.snapshotRef().key());
+      if ("SCHEDULED".equals(reason)) {
+        assertThat(result.stopReason()).isEqualTo("NO_CHANGE");
+        assertThat(result.snapshotRef()).isNull();
+        assertThat(stored).isEmpty();
+      } else {
+        assertThat(stored).containsKey(result.snapshotRef().key());
+      }
     }
   }
 
@@ -98,6 +111,66 @@ class HttpListNavigationTest {
       assertThat(calls.get()).isEqualTo(httpStatus == 503 ? 2 : 1);
     } finally {
       server.stop(0);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"SCHEDULED", "MANUAL", "INITIAL", "REVISION", "RECOVERY"})
+  void keepsEarlierVerifiedRecordsOnlyForOrdinaryCollection(String reason) throws Exception {
+    try (var site =
+        new TestSite(
+            Map.of(
+                "/list", page("42", NEXT),
+                "/list?page=2", page("unavailable", "")))) {
+      var stored = new HashMap<String, byte[]>();
+      var base = job(site.url("/list"), nextLink());
+      var numeric = failingNumberProject(base);
+      boolean ordinary = List.of("SCHEDULED", "MANUAL").contains(reason);
+      var target =
+          new CollectionProject(
+              numeric.projectId(),
+              numeric.projectSourceId(),
+              numeric.schemaVersion(),
+              numeric.connectorRevision(),
+              ordinary ? "INCREMENTAL" : "FULL",
+              numeric.schema(),
+              numeric.fieldConnectors(),
+              ordinary ? List.of(new LatestRecord(Map.of(FIELD_ID, 99))) : List.of());
+      var contract = new ContractJson();
+      var messages =
+          new CollectionJobProcessor(contract, CollectionJobHandlers.using(collector(site, stored)))
+              .execute(withProjects(base, reason, target), attempt());
+      var result =
+          contract.eventPayload(contract.readEvent(messages.body()), CollectionCompleted.class);
+      var project = result.projectResults().getFirst();
+
+      assertThat(project.normalExtractedRecordCount()).isEqualTo(1L);
+      assertThat(messages.notices())
+          .singleElement()
+          .satisfies(notice -> {
+            var issue = contract.eventPayload(contract.readEvent(notice), JobIssueDetected.class);
+            assertThat(issue.projectSourceId()).isEqualTo(target.projectSourceId());
+            assertThat(issue.error()).isEqualTo(project.error());
+          });
+      assertThat(project.error().code()).isEqualTo("TYPE_CONVERSION_FAILED");
+      assertThat(project.canIngest()).isEqualTo(ordinary);
+      assertThat(project.status()).isEqualTo(ordinary ? "PARTIAL" : "FAILED");
+      assertThat(result.status()).isEqualTo(project.status());
+
+      if (!ordinary) {
+        assertThat(result.snapshotRef()).isNull();
+        return;
+      }
+      var lists =
+          JsonMapper.shared()
+              .readTree(stored.get(result.snapshotRef().key()))
+              .path("list_snapshots");
+      assertThat(lists.at("/0/items/0/failed_project_source_ids").size()).isZero();
+      var failed = lists.at("/1/items/0");
+      assertThat(failed.at("/source_urls/0/project_source_id").asText())
+          .isEqualTo(target.projectSourceId());
+      assertThat(failed.at("/failed_project_source_ids/0").asText())
+          .isEqualTo(target.projectSourceId());
     }
   }
 
@@ -173,10 +246,12 @@ class HttpListNavigationTest {
             target.projectSourceId(),
             target.schemaVersion(),
             target.connectorRevision(),
-            target.collectionMode(),
+            "SCHEDULED".equals(reason) ? "INCREMENTAL" : "FULL",
             schema,
             List.of(connector),
-            target.latestRecords());
+            "SCHEDULED".equals(reason)
+                ? List.of(new LatestRecord(Map.of(FIELD_ID, 42)))
+                : List.of());
     return new Job<>(
         base.id(),
         base.expiresAt(),
@@ -496,6 +571,102 @@ class HttpListNavigationTest {
     }
   }
 
+  @Test
+  void reportsOneProjectImmediatelyAndContinuesTheSharedSource() throws Exception {
+    try (var site =
+        new TestSite(Map.of("/list", page("원문", NEXT), "/list?page=2", page("다음", "")))) {
+      var base = job(site.url("/list"), nextLink());
+      var healthy = base.payload().projects().getFirst();
+      var failing = failingNumberProject(base);
+      var stored = new HashMap<String, byte[]>();
+      var emitted = new ArrayList<String>();
+      var attempt = attempt();
+      when(attempt.publishNotice(anyString()))
+          .thenAnswer(invocation -> {
+            assertThat(site.requests).containsExactly("/list");
+            assertThat(stored.keySet()).singleElement().asString().startsWith("failures/CRAWLER/");
+            emitted.add(invocation.getArgument(0));
+            return true;
+          });
+      var contract = new ContractJson();
+      var handler = collector(site, stored);
+      var result =
+          new CollectionJobProcessor(contract, CollectionJobHandlers.using(handler))
+              .execute(withProjects(base, failing, healthy), attempt);
+
+      assertThat(result.notices()).isEmpty();
+      assertThat(emitted).hasSize(1);
+      assertThat(emitted.getFirst()).doesNotContain("원문");
+      var notice =
+          contract.eventPayload(contract.readEvent(emitted.getFirst()), JobIssueDetected.class);
+      var completed =
+          contract.eventPayload(contract.readEvent(result.body()), CollectionCompleted.class);
+      assertThat(notice.scope()).isEqualTo("PROJECT_SOURCE");
+      assertThat(notice.projectSourceId()).isEqualTo(failing.projectSourceId());
+      assertThat(completed.status()).isEqualTo("PARTIAL");
+      var failed = completed.projectResults().getFirst();
+      assertThat(failed.error()).isEqualTo(notice.error());
+      assertThat(failed.canIngest()).isFalse();
+      assertThat(failed.normalExtractedRecordCount()).isZero();
+      assertThat(completed.projectResults().getLast().canIngest()).isTrue();
+      assertThat(completed.projectResults().getLast().normalExtractedRecordCount()).isEqualTo(2);
+      var evidence = failed.error().failureEvidence().getFirst();
+      var sidecar = JsonMapper.shared().readTree(stored.get(evidence.ref().key()));
+      assertThat(sidecar.path("raw_values").get(0).asString()).isEqualTo("원문");
+      assertThat(
+              Duration.between(
+                  Instant.parse(sidecar.path("observed_at").asString()),
+                  Instant.parse(evidence.expiresAt())))
+          .isEqualTo(Duration.ofDays(7));
+      assertThat(site.requests).containsExactly("/list", "/list?page=2");
+      var pages =
+          JsonMapper.shared()
+              .readTree(stored.get(completed.snapshotRef().key()))
+              .path("list_snapshots");
+      assertThat(pages.get(0).path("items").get(0).path("source_urls")).hasSize(2);
+      assertThat(pages.get(1).path("items").get(0).path("source_urls")).hasSize(1);
+    }
+  }
+
+  @Test
+  void leavesTheAttemptUnacknowledgedWhenRequiredSidecarCannotBeStored() throws Exception {
+    try (var site = new TestSite(Map.of("/list", page("원문", NEXT)))) {
+      var base = job(site.url("/list"), nextLink());
+      var attempt = attempt();
+      var processor =
+          new CollectionJobProcessor(
+              new ContractJson(),
+              CollectionJobHandlers.using(
+                  new FixedCollection(
+                      site.access((uri, budget) -> () -> {}),
+                      new FieldValueProcessor(new JavaFieldParser()),
+                      "artifacts",
+                      (key, mime, body) -> {
+                        throw new IllegalStateException("S3 unavailable");
+                      })));
+      assertThatThrownBy(
+              () -> processor.execute(withProjects(base, failingNumberProject(base)), attempt))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("Could not store a snapshot object");
+      org.mockito.Mockito.verify(attempt, org.mockito.Mockito.never()).publishNotice(anyString());
+      assertThat(site.requests).containsExactly("/list");
+    }
+  }
+
+  private static CollectionProject failingNumberProject(Job<CollectionExecute> base) {
+    var model = base.payload().projects().getFirst();
+    return new CollectionProject(
+        UUID.randomUUID().toString(),
+        UUID.randomUUID().toString(),
+        1L,
+        1L,
+        "FULL",
+        new Schema(
+            List.of(new SchemaField(FIELD_ID, "price", null, null, null, "number", false, null))),
+        model.fieldConnectors(),
+        List.of());
+  }
+
   private static CollectionProject incremental(CollectionProject base, String... values) {
     return new CollectionProject(
         base.projectId(),
@@ -512,6 +683,11 @@ class HttpListNavigationTest {
 
   private static Job<CollectionExecute> withProjects(
       Job<CollectionExecute> base, CollectionProject... targets) {
+    return withProjects(base, "SCHEDULED", targets);
+  }
+
+  private static Job<CollectionExecute> withProjects(
+      Job<CollectionExecute> base, String reason, CollectionProject... targets) {
     var payload = base.payload();
     return new Job<>(
         base.id(),
@@ -519,7 +695,7 @@ class HttpListNavigationTest {
         base.workBudget(),
         new CollectionExecute(
             payload.sourceId(),
-            "SCHEDULED",
+            reason,
             payload.maxDurationSeconds(),
             payload.navigationRevision(),
             payload.navigation(),

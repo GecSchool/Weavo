@@ -79,19 +79,7 @@ final class FixedCollectionFields {
       }
       var rule = entry.getKey();
       var open = rule.open();
-      URI address = null;
-      if (open.type() == OpenType.LINK) {
-        String link;
-        try {
-          link = item.uniqueLink(open.selector(), open.urlAttribute());
-        } catch (IllegalArgumentException | IllegalStateException failure) {
-          throw new SiteAccessException(
-              SiteAccessException.Kind.BROWSER_FAILED, "Invalid detail link selector");
-        }
-        if (link != null) {
-          address = SiteAccess.normalizeAddress(link);
-        }
-      }
+      URI address = open.type() == OpenType.LINK ? shareableLink(item, open) : null;
       var key =
           new VisitKey(
               rule.access(),
@@ -107,16 +95,27 @@ final class FixedCollectionFields {
     return List.copyOf(visits.values());
   }
 
+  private static URI shareableLink(HtmlScope item, DetailOpen open) {
+    try {
+      String link = item.uniqueLink(open.selector(), open.urlAttribute());
+      return link == null ? null : SiteAccess.normalizeAddress(link);
+    } catch (IllegalArgumentException | IllegalStateException | SiteAccessException error) {
+      // A rule that cannot be grouped is validated on its own under the detail navigation guard.
+      return null;
+    }
+  }
+
   record DetailVisit(DetailNavigation rule, List<Field> fields) {}
 
   private record VisitKey(
       DetailAccess access, Target target, DetailReturn returnRule, URI link, DetailOpen action) {}
 
-  void extract(
+  List<FieldFailure> extract(
       List<Field> fields,
       HtmlScope scope,
       WorkBudget budget,
       Map<String, Map<String, Object>> values) {
+    var failures = new ArrayList<FieldFailure>();
     for (Field field : fields) {
       var target = values.get(field.projectSourceId());
       if (target == null) {
@@ -144,18 +143,24 @@ final class FixedCollectionFields {
               case PARSER, PARSER_INPUT -> "PARSER_FAILED";
               case TYPE_CONVERSION -> "TYPE_CONVERSION_FAILED";
             };
-        throw new InvalidField(
-            field.projectSourceId(),
-            new MessageError(
-                code,
-                "CRAWLER_EXTRACTION",
-                "필드 추출 결과를 검증하지 못했습니다.",
-                Map.of("field_id", connector.fieldId(), "reason", result.failure().reason()),
-                false,
-                null));
+        values.remove(field.projectSourceId());
+        failures.add(
+            new FieldFailure(
+                field.projectSourceId(),
+                connector.fieldId(),
+                extraction.rawValues(),
+                new MessageError(
+                    code,
+                    "CRAWLER_EXTRACTION",
+                    "필드 추출 결과를 검증하지 못했습니다.",
+                    Map.of("field_id", connector.fieldId(), "reason", result.failure().reason()),
+                    false,
+                    null)));
+        continue;
       }
       target.put(connector.fieldId(), result.value());
     }
+    return failures;
   }
 
   static List<CollectionSnapshot.Consumer> consumers(List<Field> fields) {
@@ -172,22 +177,6 @@ final class FixedCollectionFields {
 
   record Field(String projectSourceId, FieldConnector connector, Type type, boolean nullable) {}
 
-  static final class InvalidField extends RuntimeException {
-    private final String projectSourceId;
-    private final MessageError error;
-
-    InvalidField(String projectSourceId, MessageError error) {
-      super(error.message());
-      this.projectSourceId = projectSourceId;
-      this.error = error;
-    }
-
-    String projectSourceId() {
-      return projectSourceId;
-    }
-
-    MessageError error() {
-      return error;
-    }
-  }
+  record FieldFailure(
+      String projectSourceId, String fieldId, List<String> rawValues, MessageError error) {}
 }

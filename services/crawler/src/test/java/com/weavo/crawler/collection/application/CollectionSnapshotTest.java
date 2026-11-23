@@ -40,7 +40,7 @@ class CollectionSnapshotTest {
             List.of(new SourceUrl("source", null), new SourceUrl("source", null)))) {
       try (var snapshot = new CollectionSnapshot("artifacts", UUID.randomUUID(), attempt)) {
         snapshot.captureList(new PageSnapshot(url, "<article>공지</article>"), navigation);
-        snapshot.addItem(0, participants, List.of());
+        snapshot.addItem(0, participants, List.of(), List.of());
         assertThatThrownBy(() ->
                 snapshot.publish(
                     request,
