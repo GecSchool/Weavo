@@ -6,14 +6,24 @@ import com.weavo.extraction.FieldExtractor;
 import com.weavo.extraction.FieldValueConverter.Type;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.HtmlScope;
+import com.weavo.siteaccess.SiteAccess;
+import com.weavo.siteaccess.SiteAccessException;
 import com.weavo.siteaccess.WorkBudget;
 import com.weavo.siteaccess.rule.FieldConnector;
+import com.weavo.siteaccess.rule.FieldConnector.DetailAccess;
 import com.weavo.siteaccess.rule.FieldConnector.DetailNavigation;
+import com.weavo.siteaccess.rule.FieldConnector.DetailOpen;
+import com.weavo.siteaccess.rule.FieldConnector.DetailReturn;
+import com.weavo.siteaccess.rule.FieldConnector.OpenType;
+import com.weavo.siteaccess.rule.FieldConnector.Target;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /** Supplies the scopes for fixed collection and validates values using the shared extractor. */
 final class FixedCollectionFields {
@@ -51,9 +61,56 @@ final class FixedCollectionFields {
     return listFields;
   }
 
-  Map<DetailNavigation, List<Field>> detailGroups() {
-    return detailGroups;
+  boolean hasDetails(Predicate<String> participates) {
+    return detailGroups.values().stream()
+        .flatMap(List::stream)
+        .anyMatch(field -> participates.test(field.projectSourceId()));
   }
+
+  List<DetailVisit> detailVisits(HtmlScope item, Set<String> participants) {
+    Map<VisitKey, DetailVisit> visits = new LinkedHashMap<>();
+    for (var entry : detailGroups.entrySet()) {
+      var fields =
+          entry.getValue().stream()
+              .filter(field -> participants.contains(field.projectSourceId()))
+              .toList();
+      if (fields.isEmpty()) {
+        continue;
+      }
+      var rule = entry.getKey();
+      var open = rule.open();
+      URI address = null;
+      if (open.type() == OpenType.LINK) {
+        String link;
+        try {
+          link = item.uniqueLink(open.selector(), open.urlAttribute());
+        } catch (IllegalArgumentException | IllegalStateException failure) {
+          throw new SiteAccessException(
+              SiteAccessException.Kind.BROWSER_FAILED, "Invalid detail link selector");
+        }
+        if (link != null) {
+          address = SiteAccess.normalizeAddress(link);
+        }
+      }
+      var key =
+          new VisitKey(
+              rule.access(),
+              open.target(),
+              rule.returnRule(),
+              address,
+              address == null ? open : null);
+      visits
+          .computeIfAbsent(key, ignored -> new DetailVisit(rule, new ArrayList<>()))
+          .fields()
+          .addAll(fields);
+    }
+    return List.copyOf(visits.values());
+  }
+
+  record DetailVisit(DetailNavigation rule, List<Field> fields) {}
+
+  private record VisitKey(
+      DetailAccess access, Target target, DetailReturn returnRule, URI link, DetailOpen action) {}
 
   void extract(
       List<Field> fields,

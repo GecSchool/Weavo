@@ -135,6 +135,178 @@ class FixedCollectionBrowserTest {
   }
 
   @Test
+  void equivalentLinkSelectorsShareADetailAndOnlyActiveProjectsConsumeLaterItems()
+      throws Exception {
+    String first =
+        """
+        <main class=list><article><h2>첫 글</h2><a class=alternate href=/detail/1>상세</a></article></main>
+        <a class=next href=/next>다음</a>
+        """;
+    String second =
+        """
+        <main class=list><article><h2>둘째 글</h2><a class=alternate href=/detail/2>상세</a></article></main>
+        """;
+    try (var site = new TestSite(first, Map.of("/next", second))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var rule =
+          base.payload().projects().getFirst().fieldConnectors().getLast().detailNavigation();
+      var altRule =
+          new DetailNavigation(
+              rule.access(),
+              new DetailOpen(OpenType.LINK, ".alternate", "href", Target.CURRENT_TAB),
+              rule.returnRule());
+      var old = base.payload().projects().getFirst();
+      var fast =
+          new CollectionProject(
+              old.projectId(),
+              old.projectSourceId(),
+              old.schemaVersion(),
+              old.connectorRevision(),
+              "INCREMENTAL",
+              old.schema(),
+              old.fieldConnectors(),
+              List.of(new LatestRecord(Map.of(TITLE, "첫 글", BODY, "본문 1"))));
+      var full = project(AUTHOR, ".author", altRule);
+      var navigation =
+          browserList(
+              site.url("/list"),
+              new Pagination(
+                  PaginationType.NEXT_LINK, ".next", "href", ".list", null, null, null, null));
+      navigation =
+          new Navigation(
+              navigation.listUrl(),
+              List.of(),
+              new ListAccess(AccessMethod.BROWSER, ".list"),
+              navigation.itemSelector(),
+              navigation.pagination());
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "SCHEDULED", 20, 4L, navigation, List.of(fast, full));
+      var execution = new Job<>(base.id(), base.expiresAt(), base.workBudget(), request);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(execution, attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("SUCCEEDED");
+      var pages = read(stored.get(result.snapshotRef().key())).path("list_snapshots");
+      var firstItem = pages.get(0).path("items").get(0);
+      assertThat(firstItem.path("details")).hasSize(1);
+      assertThat(firstItem.path("details").get(0).path("consumers")).hasSize(2);
+      var laterItem = pages.get(1).path("items").get(0);
+      assertThat(laterItem.path("source_urls")).hasSize(1);
+      assertThat(laterItem.path("source_urls").get(0).path("project_source_id").asString())
+          .isEqualTo(full.projectSourceId());
+      assertThat(laterItem.path("details").get(0).path("consumers")).hasSize(1);
+      assertThat(
+              laterItem
+                  .path("details")
+                  .get(0)
+                  .path("consumers")
+                  .get(0)
+                  .path("project_source_id")
+                  .asString())
+          .isEqualTo(full.projectSourceId());
+      assertThat(site.detailRequests.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void skipsBrowserOnHttpPageWhenOnlyListProjectsRemain() throws Exception {
+    String first =
+        "<main class=list><article><h2>첫 글</h2><a href=/detail/1>상세</a></article>"
+            + "<a class=next href=/next>다음</a></main>";
+    String second =
+        "<main class=list><article><h2>둘째 글</h2></article></main>"
+            + "<script>document.querySelector('h2').textContent = 'rendered variant';</script>";
+    try (var site = new TestSite(first, Map.of("/next", second))) {
+      var base = job(site.url("/list"), AccessMethod.HTTP, OpenType.LINK);
+      var payload = base.payload();
+      var old = payload.projects().getFirst();
+      var fast =
+          new CollectionProject(
+              old.projectId(),
+              old.projectSourceId(),
+              1L,
+              2L,
+              "INCREMENTAL",
+              old.schema(),
+              old.fieldConnectors(),
+              List.of(new LatestRecord(Map.of(TITLE, "첫 글", BODY, "본문 1"))));
+      var navigation =
+          new Navigation(
+              site.url("/list"),
+              List.of(),
+              new ListAccess(AccessMethod.HTTP, null),
+              "article",
+              new Pagination(
+                  PaginationType.NEXT_LINK, ".next", "href", null, null, null, null, null));
+      var full = listOnlyJob(navigation).payload().projects().getFirst();
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "SCHEDULED", 20, 4L, navigation, List.of(fast, full));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status())
+          .withFailMessage(
+              "status=%s, error=%s, requests=%s", result.status(), result.error(), site.requests)
+          .isEqualTo("SUCCEEDED");
+      assertThat(result.projectResults().getLast().normalExtractedRecordCount()).isEqualTo(2L);
+    }
+  }
+
+  @Test
+  void differentModalControlsKeepSeparateDetailObjectsAtTheSameAddress() throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", false))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL);
+      var payload = base.payload();
+      var rule = payload.projects().getFirst().fieldConnectors().getLast().detailNavigation();
+      var alternate =
+          project(
+              AUTHOR,
+              ".author",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.CLICK, "a", null, Target.MODAL),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(),
+              payload.executionReason(),
+              20,
+              4L,
+              payload.navigation(),
+              List.of(payload.projects().getFirst(), alternate));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("SUCCEEDED");
+      var details =
+          read(stored.get(result.snapshotRef().key()))
+              .path("list_snapshots")
+              .get(0)
+              .path("items")
+              .get(0)
+              .path("details");
+      assertThat(details).hasSize(2);
+      assertThat(details.get(0).path("url").asString())
+          .isEqualTo(details.get(1).path("url").asString());
+      assertThat(key(details.get(0))).isNotEqualTo(key(details.get(1)));
+      assertThat(details.get(0).path("consumers")).hasSize(1);
+      assertThat(details.get(1).path("consumers")).hasSize(1);
+    }
+  }
+
+  @Test
   void sourceUrlRemainsTheWorkingLinkWhenTheDetailPageReplacesItsAddress() throws Exception {
     try (var site = new TestSite(LIST)) {
       site.detailReplacesUrl = true;
