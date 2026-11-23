@@ -540,7 +540,24 @@ class SourceAnalysisBrowserSmokeTest {
                 body = "User-agent: *\nDisallow: /list\n";
               } else {
                 exchange.getResponseHeaders().set("Content-Type", "text/html;charset=utf-8");
-                if (path.startsWith("/set/")) {
+                if (path.equals("/bulletins") || path.equals("/bulletins-next")) {
+                  if (path.endsWith("-next")) {
+                    next.incrementAndGet();
+                    body = pipelineList(pipelineRow("Exam timetable", "/detail/5", null), null);
+                  } else {
+                    body =
+                        pipelineList(
+                            pipelineRow("Scholarship applications", "/detail/1", null)
+                                + pipelineRow("Library hours", "/detail/2", null),
+                            "/bulletins-next");
+                  }
+                } else if (path.equals("/briefs")) {
+                  body =
+                      pipelineList(
+                          pipelineRow("Club fair", null, "Meet in the main hall.")
+                              + pipelineRow("Campus shuttle", null, "The shuttle runs until six."),
+                          null);
+                } else if (path.startsWith("/set/")) {
                   body = "<main>" + item(9) + "</main>";
                 } else if (path.equals("/next")) {
                   next.incrementAndGet();
@@ -576,7 +593,43 @@ class SourceAnalysisBrowserSmokeTest {
     }
 
     String url() {
-      return "http://fixture.example:" + server.getAddress().getPort() + "/list";
+      return url("/list");
+    }
+
+    String url(String path) {
+      return "http://fixture.example:" + server.getAddress().getPort() + path;
+    }
+
+    private static String pipelineList(String rows, String nextPage) {
+      String pagination =
+          nextPage == null
+              ? ""
+              : "<nav aria-label=Pagination><a class=next rel=next href="
+                  + nextPage
+                  + ">Next page</a></nav>";
+      return "<header>Campus navigation</header><main><h1>University notices</h1>"
+          + "<aside><article class=sponsored-card><h2>Sponsored story</h2></article></aside>"
+          + "<section aria-label=Notices>"
+          + rows
+          + "</section>"
+          + pagination
+          + "</main><footer>Campus directory</footer>";
+    }
+
+    private static String pipelineRow(String title, String detail, String body) {
+      String content =
+          detail == null
+              ? "<p class=notice-body>" + body + "</p>"
+              : "<a class=notice-details href=" + detail + ">Notice detail</a>";
+      return "<article class=notice-card><header><h2 class=notice-title>"
+          + title
+          + "</h2></header>"
+          + content
+          + "</article>";
+    }
+
+    int nextRequests() {
+      return next.get();
     }
 
     SiteAccess access() {

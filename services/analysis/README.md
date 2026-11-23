@@ -78,3 +78,16 @@ Bearer 토큰을 설정합니다. 서비스에서 생성된 Java 코드는 해�
 환경 변수를 설정한 뒤 `WEAVO_RUN_OPENAI_SMOKE=1 ./gradlew browserSmokeTest --tests
 '*SourceAnalysisBrowserSmokeTest.terraProposalCollectsTheDetailBodyWithTheActualBrowser'`를
 실행합니다. 분석에는 테스트용 로컬 사이트의 목록과 상세만 사용합니다.
+
+## 공동 추천과 승인 샘플
+
+`worker` 프로필은 `INITIAL`, `RETRY_SOURCE`와 `REVALIDATE`를 처리합니다.
+출처별 중간 결과와 승인 샘플은 같은 분석 작업의 별도 S3 경로에 저장됩니다.
+고정 응답 워커의 `worker-test` 프로필은 로컬 연결 검사에 사용합니다.
+
+LocalStack를 실행한 환경에서 아래 검사로 SQS 수신, S3 저장과 완료 이벤트 발행을 검증합니다.
+이 검사는 고정 LLM 응답과 Control 선점 대역으로 실행할 수 있습니다.
+
+```sh
+WEAVO_ANALYSIS_TEST_AWS=http://127.0.0.1:4566 ./gradlew test --rerun-tasks
+```

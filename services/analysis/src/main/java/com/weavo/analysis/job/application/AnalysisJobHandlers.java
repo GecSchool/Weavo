@@ -17,14 +17,14 @@ public final class AnalysisJobHandlers {
     this.handlers = Map.copyOf(handlers);
   }
 
-  public AnalysisCompleted execute(AnalysisExecute request, AttemptContext attempt)
+  public AnalysisCompleted execute(String jobId, AnalysisExecute request, AttemptContext attempt)
       throws InterruptedException {
     var purpose = Purpose.valueOf(request.purpose());
     var handler = handlers.get(purpose);
     if (handler == null) {
       throw new IllegalStateException("No analysis handler for " + purpose);
     }
-    return handler.execute(request, attempt);
+    return handler.execute(jobId, request, attempt);
   }
 
   public static AnalysisJobHandlers forTesting() {
@@ -35,7 +35,8 @@ public final class AnalysisJobHandlers {
     return new AnalysisJobHandlers(handlers);
   }
 
-  private static AnalysisCompleted fixedResult(AnalysisExecute request, AttemptContext attempt) {
+  private static AnalysisCompleted fixedResult(
+      String jobId, AnalysisExecute request, AttemptContext attempt) {
     var error =
         new MessageError(
             "TECHNICAL_FAILURE", null, "테스트 처리기는 실제 분석을 실행하지 않습니다.", Map.of(), false, null);
@@ -72,7 +73,7 @@ public final class AnalysisJobHandlers {
 
   @FunctionalInterface
   public interface Handler {
-    AnalysisCompleted execute(AnalysisExecute request, AttemptContext attempt)
+    AnalysisCompleted execute(String jobId, AnalysisExecute request, AttemptContext attempt)
         throws InterruptedException;
   }
 }
