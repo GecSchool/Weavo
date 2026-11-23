@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import software.amazon.awssdk.core.exception.SdkException;
 import tools.jackson.databind.PropertyNamingStrategies;
@@ -19,7 +20,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Stages HTML locally so network uploads can use the attempt's separate completion window. */
 final class CollectionSnapshot implements AutoCloseable {
-  private static final String LIST_ID = "list-0001";
   private static final JsonMapper JSON =
       JsonMapper.builder().propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE).build();
 
@@ -28,8 +28,9 @@ final class CollectionSnapshot implements AutoCloseable {
   private final AttemptContext attempt;
   private final String prefix;
   private final Path directory;
-  private final List<Item> items = new ArrayList<>();
-  private PageSnapshotMetadata list;
+  private final List<ListSnapshot> lists = new ArrayList<>();
+  private ListSnapshot list;
+  private int itemCount;
   private int nextDetailId = 1;
 
   CollectionSnapshot(String bucket, UUID jobId, AttemptContext attempt) {
@@ -44,12 +45,18 @@ final class CollectionSnapshot implements AutoCloseable {
     }
   }
 
-  void captureList(PageSnapshot page) {
+  void captureList(PageSnapshot page, Navigation navigation) {
+    String id = String.format(Locale.ROOT, "list-%04d", lists.size() + 1);
     list =
-        new PageSnapshotMetadata(
+        new ListSnapshot(
+            id,
             page.url().toString(),
             attempt.now().toString(),
-            capture("lists/" + LIST_ID + ".html", page.html()));
+            navigation.listAccess().method().name(),
+            capture("lists/" + id + ".html", page.html()),
+            new ArrayList<>(),
+            navigation.itemSelector());
+    lists.add(list);
   }
 
   Detail captureDetail(PageSnapshot page, List<Consumer> consumers) {
@@ -58,33 +65,26 @@ final class CollectionSnapshot implements AutoCloseable {
   }
 
   void addItem(int itemIndex, List<SourceUrl> sourceUrls, List<Detail> details) {
-    String key = LIST_ID + ":item-%04d".formatted(itemIndex);
-    items.add(
-        new Item(key, itemIndex, items.size(), List.copyOf(sourceUrls), List.copyOf(details)));
+    String key = list.snapshotId() + String.format(Locale.ROOT, ":item-%04d", itemIndex);
+    list.items()
+        .add(new Item(key, itemIndex, itemCount++, List.copyOf(sourceUrls), List.copyOf(details)));
   }
 
   int itemCount() {
-    return items.size();
+    return itemCount;
   }
 
   ObjectReference publish(CollectionExecute request, FixedCollection.SnapshotUpload store)
       throws InterruptedException {
-    uploadHtml(list.objectRef(), store);
-    for (Item item : items) {
-      for (Detail detail : item.details()) {
-        uploadHtml(detail.objectRef(), store);
+    var completedLists = lists.stream().filter(page -> !page.items().isEmpty()).toList();
+    for (ListSnapshot page : completedLists) {
+      uploadHtml(page.objectRef(), store);
+      for (Item item : page.items()) {
+        for (Detail detail : item.details()) {
+          uploadHtml(detail.objectRef(), store);
+        }
       }
     }
-    Navigation navigation = request.navigation();
-    var listSnapshot =
-        new ListSnapshot(
-            LIST_ID,
-            list.url(),
-            list.capturedAt(),
-            navigation.listAccess().method().name(),
-            list.objectRef(),
-            List.copyOf(items),
-            navigation.itemSelector());
     var manifest =
         new Manifest(
             1,
@@ -93,7 +93,7 @@ final class CollectionSnapshot implements AutoCloseable {
             request.sourceId(),
             request.navigationRevision(),
             attempt.now().toString(),
-            List.of(listSnapshot));
+            completedLists);
     var ref = new ObjectReference(bucket, prefix + "manifest.json");
     put(store, ref, "application/json", JSON.writeValueAsBytes(manifest));
     attempt.requireOwnership();
@@ -161,8 +161,6 @@ final class CollectionSnapshot implements AutoCloseable {
       throw new UncheckedIOException("Could not remove snapshot staging directory", failure);
     }
   }
-
-  private record PageSnapshotMetadata(String url, String capturedAt, ObjectReference objectRef) {}
 
   private record Manifest(
       int formatVersion,

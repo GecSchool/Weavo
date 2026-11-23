@@ -1,5 +1,9 @@
 package com.weavo.extraction;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import org.jsoup.Jsoup;
@@ -52,12 +56,35 @@ public final class HtmlScope {
     if (matches.size() != 1) {
       return null;
     }
-    String value = matches.getFirst().attribute(attribute);
+    return matches.getFirst().absoluteUrl(attribute);
+  }
+
+  public String absoluteUrl(String attribute) {
+    String value = attribute(attribute);
     if (value == null || value.isBlank()) {
       return null;
     }
-    String url = matches.getFirst().root.absUrl(attribute);
+    String url = root.absUrl(attribute);
     return url.isEmpty() ? null : url;
+  }
+
+  public boolean isDisabledControl() {
+    return root.closest("[disabled], [aria-disabled=true], .disabled") != null;
+  }
+
+  /** Keeps the identity of a captured item without retaining its HTML across pages. */
+  public String markupFingerprint() {
+    try {
+      var digest = MessageDigest.getInstance("SHA-256");
+      digest.update(root.outerHtml().getBytes(StandardCharsets.UTF_8));
+      for (Element link : root.select("a[href]")) {
+        digest.update((byte) 0);
+        digest.update(link.absUrl("href").getBytes(StandardCharsets.UTF_8));
+      }
+      return HexFormat.of().formatHex(digest.digest());
+    } catch (NoSuchAlgorithmException impossible) {
+      throw new IllegalStateException("SHA-256 is not available", impossible);
+    }
   }
 
   /** Checks browser markup using the same HTML parser and element context as replay. */
