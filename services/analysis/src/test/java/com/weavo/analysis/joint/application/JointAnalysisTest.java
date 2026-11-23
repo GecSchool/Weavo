@@ -25,6 +25,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class JointAnalysisTest {
@@ -129,8 +130,10 @@ class JointAnalysisTest {
     assertThat(all.intermediates()).isEmpty();
   }
 
-  @Test
-  void keepsPreviousSchemaAndConnectorsOnSourceRetry() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void preservesTheExistingSchemaWhenARetrySuggestsANewField(boolean hasExistingMatch)
+      throws Exception {
     var storage = new LinkedHashMap<String, byte[]>();
     var firstTask = request(A);
     var initial =
@@ -163,19 +166,34 @@ class JointAnalysisTest {
                 artifacts(storage, new AtomicInteger()),
                 (input, budget) -> {
                   var previous = input.existingFields().getFirst();
+                  var target = input.sources().getFirst();
+                  var extra = field("author", map(target, "label", null));
+                  if (!hasExistingMatch) {
+                    return List.of(extra);
+                  }
                   return List.of(
+                      extra,
                       new JointRecommender.Field(
                           previous.fieldId(),
                           "changed",
                           "Changed",
                           Type.DATE,
                           "ignored",
-                          List.of(map(input.sources().getFirst(), "label", null))));
+                          List.of(map(target, "label", null))));
                 })
             .prepare(id(), retry, attempt());
+    if (!hasExistingMatch) {
+      assertThat(result.candidate()).isNull();
+      assertThat(result.failures().get(b.projectSourceId()).reason())
+          .isEqualTo("NO_EXISTING_FIELD_MAPPING");
+      return;
+    }
     assertThat(result.candidate().schema()).isEqualTo(initial.candidate().schema());
     assertThat(result.candidate().sourceConfigs().getFirst())
         .isEqualTo(initial.candidate().sourceConfigs().getFirst());
+    assertThat(result.candidate().sourceConfigs().getLast().projectSourceId())
+        .isEqualTo(b.projectSourceId());
+    assertThat(result.candidate().candidateMappings()).hasSize(2);
     assertThat(result.intermediates()).hasSize(2);
   }
 

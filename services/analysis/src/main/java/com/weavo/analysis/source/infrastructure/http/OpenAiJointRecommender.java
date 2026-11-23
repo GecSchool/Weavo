@@ -19,8 +19,9 @@ public final class OpenAiJointRecommender implements JointRecommender {
       fields. Each shared field may map at most one field per source. A source field may map to
       multiple shared fields if each mapping supplies its own Java parser body. Return a unique
       lower snake_case API name, display name, type and recommendation reason for new fields.
-      For a retry, use an existing field ID only if its meaning clearly matches an observed field.
-      Preserve the existing definitions and do not propose changes to them. Only recommend
+      For a retry, map to existing field IDs whose meaning matches the observations. Omit
+      observations without a match. Keep the existing definitions and omit proposals for new fields.
+      Only recommend
       transformations needed by the output field. A Java body returns a String or null and uses
       List<String> rawValues. Do not change selectors or navigation.
       """;

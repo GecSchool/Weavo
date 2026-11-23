@@ -100,9 +100,13 @@ public final class JointAnalysis {
                 request.collectionPurpose(), oldFields, samples(materials, sampleCounts)),
             budget);
     budget.check();
-    var candidate = build(fields, materials, previous, fresh);
+    var candidate = build(fields, materials, previous, fresh, failures);
     Map<String, ObjectReference> refs = new LinkedHashMap<>();
-    materials.forEach((id, material) -> refs.put(id, material.ref()));
+    materials.forEach((id, material) -> {
+      if (!failures.containsKey(id)) {
+        refs.put(id, material.ref());
+      }
+    });
     return new Result(
         candidate,
         Map.copyOf(refs),
@@ -222,7 +226,8 @@ public final class JointAnalysis {
       List<JointRecommender.Field> proposal,
       Map<String, Material> materials,
       Candidate previous,
-      Set<String> incoming) {
+      Set<String> incoming,
+      Map<String, SourceAnalyzer.Failure> failures) {
     var fields = new LinkedHashMap<String, SchemaField>();
     var names = new HashSet<String>();
     var configs = new LinkedHashMap<String, SourceConfig>();
@@ -235,12 +240,7 @@ public final class JointAnalysis {
             fields.put(field.fieldId(), field);
             names.add(field.apiName());
           });
-      previous.sourceConfigs().stream()
-          .filter(config -> !incoming.contains(config.projectSourceId()))
-          .forEach(config -> configs.put(config.projectSourceId(), config));
-      previous.candidateMappings().stream()
-          .filter(mapping -> !incoming.contains(mapping.projectSourceId()))
-          .forEach(mappings::add);
+      previous.sourceConfigs().forEach(config -> configs.put(config.projectSourceId(), config));
     }
     var rules = new LinkedHashMap<String, Map<String, FieldConnector>>();
     materials.keySet().stream()
@@ -251,6 +251,9 @@ public final class JointAnalysis {
     var seenFields = new HashSet<String>();
     for (JointRecommender.Field proposed : proposal) {
       String fieldId = proposed.existingFieldId();
+      if (fieldId == null && previous != null) {
+        continue;
+      }
       if (fieldId == null) {
         if (proposed.apiName() == null
             || !API_NAME.matcher(proposed.apiName()).matches()
@@ -320,33 +323,48 @@ public final class JointAnalysis {
                     && codes.stream().anyMatch(code -> code == null || code.isBlank()))) {
       throw new IllegalArgumentException("Split mappings require per-output parsing rules");
     }
-    materials.forEach((id, material) -> {
-      if (incoming.contains(id)) {
+    for (var entry : rules.entrySet()) {
+      String id = entry.getKey();
+      var material = materials.get(id);
+      if (previous == null) {
         for (var field : material.body().fields()) {
           if (field.location() != Location.ABSENT
               && !coverage.contains(new Origin(id, field.candidateKey()))) {
             throw new IllegalArgumentException("Joint proposal omitted an observed source field");
           }
         }
-        var previousConfig =
-            previous == null
-                ? null
-                : previous.sourceConfigs().stream()
-                    .filter(cfg -> id.equals(cfg.projectSourceId()))
-                    .findFirst()
-                    .orElse(null);
-        configs.put(
-            id,
-            new SourceConfig(
-                id,
-                material.body().navigation(),
-                previousConfig == null ? 1L : previousConfig.connectorRevision() + 1,
-                List.copyOf(rules.get(id).values())));
+      } else if (entry.getValue().isEmpty()) {
+        failures.put(
+            id, new SourceAnalyzer.Failure("CANDIDATE", null, "NO_EXISTING_FIELD_MAPPING"));
+        continue;
       }
-    });
+      var previousConfig = configs.get(id);
+      configs.put(
+          id,
+          new SourceConfig(
+              id,
+              material.body().navigation(),
+              previousConfig == null ? 1L : previousConfig.connectorRevision() + 1,
+              List.copyOf(entry.getValue().values())));
+    }
+    if (incoming.stream().allMatch(failures::containsKey)) {
+      return null;
+    }
+    if (previous != null) {
+      previous.candidateMappings().stream()
+          .filter(mapping ->
+              !incoming.contains(mapping.projectSourceId())
+                  || failures.containsKey(mapping.projectSourceId()))
+          .forEach(mappings::add);
+    }
     var complete =
         configs.values().stream()
             .map(config -> {
+              if (previous != null
+                  && (!incoming.contains(config.projectSourceId())
+                      || failures.containsKey(config.projectSourceId()))) {
+                return config;
+              }
               Map<String, FieldConnector> byField = new LinkedHashMap<>();
               config.fieldConnectors().forEach(rule -> byField.put(rule.fieldId(), rule));
               var connectors =
@@ -363,7 +381,7 @@ public final class JointAnalysis {
             })
             .toList();
     return new Candidate(
-        new Schema(List.copyOf(fields.values())),
+        previous == null ? new Schema(List.copyOf(fields.values())) : previous.schema(),
         complete,
         previous == null ? List.of() : previous.excludedProjectSourceIds(),
         List.copyOf(mappings));
