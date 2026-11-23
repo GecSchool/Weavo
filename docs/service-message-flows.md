@@ -26,7 +26,7 @@
 |---|---|---|---|---|
 | collection.schedule.triggered | Scheduler → Control | 7.1 | 정기 실행 신호. 공통 작업 요청과 envelope가 다름 | 5, 20 |
 | analysis.execute | Control → Analysis | 6.1 | INITIAL·RETRY_SOURCE·ADD_SOURCE·REVALIDATE·REPAIR_NAVIGATION·REPAIR_CONNECTOR·RECHECK_SOURCE | 1, 2, 3, 8, 9, 10, 11 |
-| analysis.completed | Analysis → Control | 6.2, 16.2 | 성공·부분 성공·실패 결과. 복구 문맥은 16.3도 참고 | 1, 2, 3, 8, 9, 10, 11 |
+| analysis.completed | Analysis → Control | 6.2, 16.2 | 성공·부분 성공·실패 결과. 복구 문맥은 16.3도 참고 | 1, 2, 3, 7, 8, 9, 10, 11 |
 | collection.execute | Control → Crawler | 7.2 | 최초·정기·수동·리비전·복구 수집 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | collection.completed | Crawler → Control | 7.3 | 종료 사유·스냅샷·프로젝트별 적재 가능 여부 | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | schema.prepare | Control → Ingestion | 18.1 | 승인된 v1/v2 스키마 준비 | 4, 13 |
@@ -60,6 +60,8 @@
 
 ### 3.1 초기 분석과 공통 스키마 추천
 
+Analysis는 생성 후보에 코드가 있으면 7.1의 격리 파서 실행으로 샘플을 검증한다.
+
 최초 분석에서 성공한 출처가 하나 이상이면 그 결과로 공동 스키마 후보를 추천하고 실패 출처는 재시도·제외할 수 있다. 모든 출처가 실패하면 후보를 승인할 수 없다. 재시도 결과는 사용자 수정을 보존하고 필요한 검증을 수행한다.
 
 - 설명서: 1절 「초기 분석과 공통 스키마 추천」·그림 1.
@@ -89,6 +91,8 @@
 
 ### 3.2 실패 출처 재시도와 제외
 
+재시도 중 후보를 검증할 때 7.1의 공통 파서 실행을 사용한다.
+
 - 설명서: 2절 「실패 출처 재시도와 제외」·그림 2.
 - 메시지 명세의 상황별 전송 표: 15.2.
 
@@ -109,6 +113,8 @@
 
 ### 3.3 후보 수정과 재검증 및 승인
 
+영향 출처의 샘플 재검증에서 코드가 있는 필드는 7.1에 따라 실행한다.
+
 - 설명서: 3절 「후보 수정과 재검증 및 승인」·그림 3.
 - 메시지 명세의 상황별 전송 표: 15.3.
 
@@ -127,6 +133,8 @@
 | 7b | Control → 웹 / HTTP 202 | 승인·적용 상위 job_id | 12.2, 15.3 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 승인 설정·샘플 연결 기록. 신규면 15.4, 출처 변경이면 15.11~12, 구조 변경이면 15.13 |
 
 ### 3.4 승인 후 최초 수집
+
+Crawler는 승인된 목록·상세 필드를 검증하고 Ingestion은 최종 추출값을 검증한다. 가공 코드가 있는 필드는 각각 7.1에 따라 파서 실행기를 호출하며, Ingestion은 검증을 마친 뒤 DB에 적재한다.
 
 공통 경계: 승인 후 `dataset.apply(BEGIN_CHANGE)` 성공을 확인하고 아래 단계를 수행한다. 완료 또는 최종 실패 시 `dataset.apply(END_CHANGE)` 결과의 실제 커밋 내역을 반영한 뒤 다음 변경을 허용한다. 전송 형식은 메시지 명세 10.5를 따른다.
 
@@ -211,7 +219,9 @@
 
 ### 3.7 접근과 시스템 오류 처리
 
-- 설명서: 7절 「접근과 시스템 오류 처리」·그림 7.
+파서 실행기 장애, 인증·권한 실패, 잘못된 요청, 응답 형식 불일치는 내부 기술 오류로 분류한다. 가용성·연결·응답의 일시 장애만 작업 예산 내에서 제한 재시도한다. 오류가 확정되면 실행 서비스가 기존 결과 채널로 Control에 기술 실패를 알린다. 적재에서 유효한 snapshot_ref가 있으면 같은 스냅샷을 재처리한다.
+
+- 설명서: 7절 「접근과 시스템 오류 처리」·그림 7 및 격리 파서 호출의 그림 7-1.
 - 메시지 명세의 상황별 전송 표: 15.7.
 
 [기존] 내부 재시도와 SQS 재전달을 구분한다.
@@ -225,10 +235,12 @@
 | 2b | 실행 서비스 → Control / 최종 결과의 error | 401·403·캡차·명시적 차단 | 7.3, 8.2, 16.2, 1.4 — 수집 또는 적재 완료 결과·오류 | 우회·사이트 접근 재시도 없이 중단. Control에 확인 필요 전달 |
 | 3a | Control → Crawler / SQS collection.execute | 재수집이 필요한 일시 오류, 새 명시적 작업 | 7.2 — 메시지 형식 | 스냅샷 확보부터 다시 수행. SQS 단순 재전달이면 기존 job_id 유지 |
 | 3b | Control → Ingestion / SQS ingestion.execute | 같은 유효 snapshot_ref, 동일 규칙 | 8.1 — 메시지 형식 | 화면 재방문 없이 읽기·적재 재시도. 기술 재전달은 같은 작업 |
-| 4 | Crawler 또는 Ingestion → Control / 각 completed 이벤트 | 성공·실패, 영향 범위 | 7.3, 8.2, 16.2, 1.4 — 수집 또는 적재 완료 결과·오류 | 성공하면 이후 수집/적재 계속. 재시도 한도 소진은 종료·문제 표시 |
+| 4 | Analysis·Crawler·Ingestion → Control / SQS `analysis.completed`, `collection.completed`, `ingestion.completed` | 성공·실패, 영향 범위. 파서 호출 기술 실패는 error.code=TECHNICAL_FAILURE, error.stage=PARSER_CALL | 6.2, 7.3, 8.2, 16.2, 1.4 — 완료 결과·오류 | Control이 결과를 기록하고 성공하면 후속 처리를 계속한다. 기술 재처리 한도 소진 시 작업을 종료하고 문제를 표시한다. |
 | 5 | Control → 웹·이메일 / 상태 조회 응답·설정에 따른 이메일 | 최종 실패 원인 | 12.2, 15.18 — 상황만 명시; 공급자 전송 형식 미정 | 리비전이면 전체 적용 보류·기존 API 유지. 규칙 오류로 관찰되면 15.8~9 |
 
 ### 3.8 공유 이동 규칙 자동 복구
+
+복구 후보 및 해당 규칙으로 얻은 필드값을 검증할 때 코드가 있으면 7.1에 따라 실행한다.
 
 Control은 각 영향 프로젝트의 공개 스키마를 Data 측에서 조회한 뒤 Control의 커넥터·비교 기준과 함께 Analysis에 전달한다. 최초 수집이 모두 실패해 공개 전인 프로젝트는 승인된 v1 후보를 기준으로 사용한다. 조회 실패를 스키마 없음으로 판단하지 않는다.
 
@@ -246,7 +258,7 @@ Control은 각 영향 프로젝트의 공개 스키마를 Data 측에서 조회�
 | 4 | Analysis ↔ S3 / 승인 샘플 조회 | DB 0건 대상의 approved_sample_ref | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | DB 1~2건은 전부 일치해야 하며 0건은 승인 샘플 사용. 기준 없거나 검증 불가면 자동 적용하지 않음 |
 | 5a | Analysis → Control / SQS analysis.completed | validation PASSED, schema_change_required=false, 모든 영향 대상 검증 | 6.2, 16.2 — 메시지 형식 | 규칙 revision 갱신 및 자동 적용. 사용자 승인 없이 재수집 |
 | 5b | Analysis → Control / SQS analysis.completed | schema_change_required=true, 후보·샘플 | 6.2, 16.2 — 메시지 형식 | 해당 프로젝트별 사용자 검토·승인 흐름으로 연결 |
-| 5c | Analysis → Control / SQS analysis.completed | FAILED 또는 UNVERIFIABLE, error | 6.2, 16.2, 1.4 — 메시지 형식 | 확인 필요 상태 유지. 사용자 수정·재검증 안내 |
+| 5c | Analysis → Control / SQS analysis.completed | 복구 후보의 FAILED 또는 UNVERIFIABLE, error | 6.2, 16.2, 1.4 — 메시지 형식 | 확인 필요 상태 유지. 사용자 수정·재검증 안내. 파서 호출 기술 실패는 3.7 적용 |
 | 6a | Control → Crawler / SQS collection.execute | execution_reason=RECOVERY, 새 navigation_revision | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
 | 6b | Crawler → Control / SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 7.3 — 메시지 형식 | 영향 범위 재수집. 다른 프로젝트의 규칙을 임의로 변경하지 않음 |
 | 7a | Control → Ingestion / SQS ingestion.execute | 새 규칙으로 확보한 스냅샷·대상별 커넥터 | 8.1 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
@@ -254,6 +266,8 @@ Control은 각 영향 프로젝트의 공개 스키마를 Data 측에서 조회�
 | 8 | Control → 웹·이메일 / 상태 조회 응답·필요한 이메일 | 완료 또는 확인 필요·승인 대기 | 12.2, 15.18 — 상황만 명시; 공급자 전송 형식 미정 | 재수집/적재 실패는 관찰된 오류 흐름으로 복귀 |
 
 ### 3.9 필드 커넥터와 파싱 오류 복구
+
+코드의 컴파일 실패·실행 예외·코드 실행 한도 초과는 필드 파싱 실패다. 실행기 접속 실패·응답 유실·가용성 장애는 기술 오류로 분류하고, 커넥터 자동 복구나 정상 추출 0건 알림으로 전환하지 않는다.
 
 선택자·접근·추출·파싱·타입 변환 실패가 하나라도 있는 레코드는 부분 저장하지 않고 정상 추출 건수에서도 제외한다. 실제 null과 원래 없는 ABSENT 필드는 정상이며 오류와 구분한다. 실패 원인과 확보 가능한 원문은 기존 검증·sidecar 정책에 따라 기록한다. 규칙 관련 실패로 해당 프로젝트·출처의 비교·수집을 계속할 수 없으면 Control은 관찰 정보와 영향 범위를 확인해 Analysis에 자동 복구를 요청한다. 근본 원인을 미리 확정하지 않는다. 반복 실패·검증 불가면 확인 필요로 전환한다. 기술 장애·접근 차단과 구별하며 복구 후보는 최초 시도 포함 최대 3회 검증한다. 비교에 필요한 필드가 추출·파싱·변환 실패로 확보되지 않아 해당 프로젝트 출처의 비교를 계속할 수 없으면 그 대상만 중단하고 관찰 정보로 자동 복구를 요청한다. 별도 실패율 임계치는 두지 않는다.
 
@@ -274,7 +288,7 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 | 4a | Analysis → Control / SQS analysis.completed | PASSED, schema_change_required=false | 6.2, 16.2 | 대상 프로젝트 출처의 새 작업 보류 |
 | 4c | Control → Ingestion / SQS dataset.apply SET_CONNECTOR_REVISION | 활성 출처는 ACTIVE, 승인 변경 대상은 CHANGE와 change_job_id·기존/새 revision | 10.6, 19.8 | Data DB 활성 또는 pending 가드 조건부 갱신 |
 | 4d | Ingestion → Control / SQS dataset.applied | 적용 결과·revision | 10.6 | 성공 확인 후 Control 규칙 활성화·재수집. 미확인이면 대기 |
-| 4b | Analysis → Control / SQS analysis.completed | 스키마 변경 필요 또는 검증 실패·기준 부족 | 6.2, 16.2, 1.4 — 메시지 형식 | 승인 대기 또는 확인 필요. 기존 정상 데이터 유지 |
+| 4b | Analysis → Control / SQS analysis.completed | 스키마 변경 필요 또는 검증 실패·기준 부족 | 6.2, 16.2, 1.4 — 메시지 형식 | 승인 대기 또는 확인 필요. 기존 정상 데이터 유지. 파서 호출 기술 실패는 3.7 적용 |
 | 5a | Control → Crawler / SQS collection.execute | execution_reason=RECOVERY, 새 커넥터 | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
 | 5b | Crawler → Control / SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 7.3 — 메시지 형식 | 영향 프로젝트에 필요한 화면 재수집 |
 | 6a | Control → Ingestion / SQS ingestion.execute | 같은 승인 코드·규칙과 최종 스냅샷 | 8.1 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
@@ -302,6 +316,8 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 사용자 조치가 필요해지면 0건 표시는 즉시 유지하고 현재 승인 변경의 END_CHANGE 결과를 확인한다. 재확인은 이전 종료가 불확실하면 대기하며, 이후 공개 여부에 따라 10.7의 새 INITIAL 또는 SOURCE_CHANGE로 이어진다. 리비전 재확인은 새 SCHEMA_REVISION에서 최종 출처를 다시 준비한다.
 
 ### 3.11 기존 프로젝트에 출처 추가
+
+신규 출처 샘플 검증과 승인 후 최종 적재에서 7.1의 공통 실행을 사용한다.
 
 공통 경계: 승인 후 `dataset.apply(BEGIN_CHANGE)` 성공을 확인하고 아래 단계를 수행한다. 완료 또는 최종 실패 시 `dataset.apply(END_CHANGE)` 결과의 실제 커밋 내역을 반영한 뒤 다음 변경을 허용한다. 전송 형식은 메시지 명세 10.5를 따른다.
 
@@ -351,6 +367,8 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 
 
 ### 3.13 스키마 변경과 복합 변경의 적용
+
+Crawler는 리비전 수집 중 새 목록·상세 필드 규칙을 검증한다. 가공 코드가 있는 필드는 Crawler와 Ingestion이 7.1에 따라 실행기를 호출한다. Ingestion은 검증을 마친 뒤 준비 데이터를 DB에 쓴다.
 
 공통 경계: 승인 후 `dataset.apply(BEGIN_CHANGE)` 성공을 확인하고 아래 단계를 수행한다. 완료 또는 최종 실패 시 `dataset.apply(END_CHANGE)` 결과의 실제 커밋 내역을 반영한 뒤 다음 변경을 허용한다. 전송 형식은 메시지 명세 10.5를 따른다.
 
@@ -580,7 +598,13 @@ Control은 프로젝트마다 승인 변경을 하나만 진행한다. 기존 da
 
 ## 7.1 파서와 정리 경계
 
-Analysis·Crawler·Ingestion은 같은 공통 파서 모듈을 사용하고 생성 Java 코드를 별도 격리 없이 각 서비스 JVM에서 실행한다. 코드가 서비스 권한과 자원을 공유하므로 무한 반복·메모리 고갈·파일 및 네트워크 접근이 해당 서비스에 영향을 줄 수 있으며 별도 강제 격리는 보장하지 않는다. 파서 사용자 편집 UI는 없다.
+Analysis·Crawler·Ingestion은 HTML 추출·타입 변환을 공통 모듈로 수행한다. 가공 코드가 있는 필드는 격리된 파서 실행기에 내부 동기 HTTP로 코드를 보내 실행한다. 실행기 호출·대기·재시도는 상위 작업의 남은 실행 기한 안에서 처리한다.
+
+1. Analysis는 최초·재시도·재검증·출처 추가·복구의 후보 검증에 실행기를 호출한다.
+2. Crawler는 최초·리비전 수집에서 승인된 가공 코드가 있는 목록·상세 필드를 검증할 때 실행기를 호출한다. 증분 수집에서는 최신값 비교에 필요한 필드를 처리할 때도 호출한다. Ingestion은 최초·일반·리비전 적재에서 S3 스냅샷을 재추출한 뒤 DB 쓰기 전에 호출한다.
+3. 호출 서비스 → 파서 실행기 → 호출 서비스 순서로 내부 동기 HTTP를 사용한다. `parser.code`가 있는 정상 추출값과 항목 키를 전달하고 문자열·null 또는 코드 실패를 돌려받는다. 호출 서비스는 타입 변환과 결과 집계를 한다.
+4. 개별 코드 실패는 Analysis의 후보 보완 또는 3.9의 승인 규칙 오류 처리로 이어진다. 묶음 전체의 기한 초과·응답 장애는 3.7을 따른다. 내부 HTTP 메시지 형식은 메시지 명세 12.1을 참고한다.
+
 
 목록 이동은 URL만이 아닌 전후 항목 구간·진행 상태를 확인한다. MVP에서 가상화 DOM으로 이미 사라진 항목 복원과 완전한 중복 판별은 보장하지 않으며 누락을 허용한다. 확인된 스냅샷에서 상세를 다른 항목에 임의 매칭하지 않는다. 변경 없음 정상 종료에는 이메일을 보내지 않는다.
 

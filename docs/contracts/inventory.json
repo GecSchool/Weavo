@@ -260,6 +260,13 @@
       "method": "GET",
       "path": "/internal/v1/projects/{project_id}/schemas/{schema_version}/prepared",
       "section": "19.3"
+    },
+    {
+      "group": "내부 API",
+      "method": "POST",
+      "path": "/internal/v1/parser:execute",
+      "producer": "Analysis/Crawler/Ingestion",
+      "consumer": "Parser"
     }
   ],
   "messages": [

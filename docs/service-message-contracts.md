@@ -8,7 +8,7 @@
 - 실행 원칙: Control 중심 조정, SQS 표준 큐, Outbox·수신 멱등 처리, 드문 중복 실행의 비용 허용과 결과의 중복 반영 방지.
 - 구현 계약: UUIDv4, 구체 필드명·열거값·작업 관계 및 아래 세부 실행·적용 계약. 미정인 항목은 구현·통합 시험에서 확인한다.
 - 참조 구분: 설명서의 절·그림 번호는 실행 흐름, 이 MD의 1~12·16절은 형식·처리 규칙, 15절은 상황별 전송 표다. 전체 대응표는 17.1에 있다.
-- 파서 형식: FieldConnector.parser에는 Java 함수 본문인 code만 넣는다. 별도 파서 버전·JAR·소스 경로·해시는 메시지에 넣지 않는다. Java 21 공통 모듈을 사용하며 생성 코드는 별도 격리 없이 각 서비스 JVM에서 실행한다.
+- 파서 형식: FieldConnector.parser에는 Java 함수 본문인 code만 넣는다. 기존 작업 메시지로 코드를 전달하고 실제 실행은 공통 Java 21 격리 실행기에 요청한다. 내부 호출은 12.1을 따른다.
 - 준비·삭제 처리: 준비 결과는 PREPARE 작업의 job_id로 참조하고, 출처 삭제는 dataset.apply로 통합한다. 운영 통계는 선택 항목으로 둔다.
 
 ## 1 데이터 형식
@@ -96,6 +96,8 @@ error.code는 정형 코드, message는 사람에게 표시할 요약, details�
   }]
 }
 ```
+
+실행기가 반환한 코드 실패는 `PARSER_FAILED`로 기록한다. 호출 장애는 완료 이벤트의 오류 객체에 `code=TECHNICAL_FAILURE`, `stage=PARSER_CALL`로 기록한다. Control은 15.7의 기술 실패 절차를 적용한다. Analysis는 작업 전체를 수행할 수 없으면 최상위 error에, 출처별 실패로 범위를 특정할 수 있으면 source_results[].error에 기록한다. 정상 추출 건수를 확정하지 못한 Crawler·Ingestion 결과는 null로 전달한다. 세부 흐름은 15.7과 15.9를 따른다.
 
 ## 2 서비스 간 데이터 연결
 
@@ -185,8 +187,8 @@ String parse(java.util.List<String> rawValues) throws Exception {
 
 - 입력은 해당 필드의 selector에서 추출한 문자열 목록이다.
 - 출력은 가공한 문자열 또는 null이다. 문자열은 이후 스키마에 맞춰 number·boolean·date 등으로 변환한다.
-- selector 불일치 같은 추출 실패는 실행기가 별도 상태로 판정한다. code가 null을 반환했다고 앞선 추출 실패를 정상 값으로 바꾸지 않는다.
-- 코드 실행 중 관찰된 예외는 실제 null과 구분한다. 같은 JVM에서 무한 반복을 안전하게 강제 종료한다고 보장하지 않는다. null 반환은 정상적인 파싱 결과일 수 있다.
+- selector 불일치 같은 추출 실패는 호출 서비스가 판정하고, 해당 필드의 파서 실행을 요청하지 않는다.
+- 정상 null 반환과 코드 예외·실행 한도 초과를 별도 상태로 구분한다.
 - 같은 입력에는 같은 결과를 반환해야 한다. 시각·난수·외부 네트워크 결과에 의존하지 않는다.
 
 ### 4.2 생성·검증·전달
@@ -199,11 +201,11 @@ language, runtime_profile, entry_class, source_ref, source_sha256, artifact_ref,
 
 ### 4.3 공통 실행 규칙
 
-Analysis·Crawler·Ingestion은 같은 함수 틀, Java 실행 환경, 승인 parser.code와 공통 타입 변환 규칙을 사용해야 한다. 공백 자동 가공은 하지 않는다. 세 서비스는 Java 21·Spring Boot와 공통 Java 파서 모듈을 사용하고 생성 코드는 별도 격리 없이 각 서비스 JVM에서 실행한다. 실행 환경이나 정규화 규칙이 다르면 수집 중 비교값과 최종 저장값이 달라질 수 있다.
+Analysis·Crawler·Ingestion은 HTML 추출·타입 변환을 공통 모듈로 수행한다. 가공 코드가 있는 필드는 격리된 파서 실행기에 내부 동기 HTTP로 코드를 보내 실행한다. Analysis는 후보를 승인 전에 검증한다. 승인 후의 Crawler와 Ingestion은 같은 승인 코드를 사용한다. 호출 서비스는 정상 반환값을 공통 타입 변환 규칙으로 처리한다.
 
-생성 코드는 서비스 JVM의 권한과 자원을 공유한다. 외부 페이지에 영향을 받은 코드가 파일·네트워크에 접근하거나 무한 반복·메모리 고갈을 일으킬 수 있다. 사용자의 코드 편집을 제공하지 않더라도 이러한 영향은 남는다. 별도의 샌드박스나 강제 자원 제한을 MVP에서 보장하지 않는다.
+파서 실행기는 별도 ECS 태스크에 배치한다. 실행기에서 같은 Java 21 함수 틀을 사용하고 컴파일 및 컴파일 결과 캐시를 관리한다. 내부 HTTP 처리와 코드 실행 환경을 분리해 코드에 서비스 자격 증명·DB·S3·네트워크 권한을 주지 않는다. 파일 접근을 제한하고 CPU·메모리·시간 제한을 강제한다. 순수 문자열과 진단만 반환하며 생성 코드·원문은 운영 로그에 남기지 않는다.
 
-파서 전용 서비스나 격리 작업자는 만들지 않는다. 컴파일과 캐시는 각 서비스의 공통 모듈 내부에서 처리하며 세 서비스의 파싱 결과 일치를 검증한다.
+코드의 컴파일 실패·실행 예외·코드 실행 한도 초과는 필드 파싱 실패다. 실행기 접속 실패·응답 유실·가용성 장애는 기술 오류로 분류하고, 커넥터 자동 복구나 정상 추출 0건 알림으로 전환하지 않는다. 실행기 호출·대기·재시도는 상위 작업의 남은 실행 기한 안에서 처리한다. Ingestion의 파싱과 검증은 DB 쓰기 트랜잭션 밖에서 수행한다. 내부 HTTP 요청·응답은 12.1을 따른다.
 
 ## 5 공유 데이터 구조
 
@@ -963,7 +965,7 @@ PREPARE 성공 예시:
 }
 ```
 
-normal_extracted_record_count=0이면 기존의 사용자 확인 흐름 대상이다. 정상 추출 건수와 status·error는 결과 판단에 필요한 필수 항목이다. APPEND 및 APPROVED_SOURCE_APPEND 성공 시 공개 데이터 상태를 나타내는 dataset_revision은 필수이며, PREPARE 결과에서는 아직 공개되지 않았으므로 null이다.
+정상 추출을 완료하고 normal_extracted_record_count=0을 확인했으면 기존의 사용자 확인 흐름을 적용한다. 파서 호출 장애 등 기술 실패로 건수를 확정하지 못했으면 null로 전달하고 15.7을 적용한다. 정상 추출 건수와 status·error는 결과 판단에 필요한 필수 항목이다. APPEND 및 APPROVED_SOURCE_APPEND 성공 시 공개 데이터 상태를 나타내는 dataset_revision은 필수이며, PREPARE 결과에서는 아직 공개되지 않았으므로 null이다.
 
 준비 결과는 PREPARE 작업의 envelope.job_id로 식별한다. 위 PREPARE 예시의 공통 envelope.job_id가 `bf521885-5d26-4c2c-9586-bf57b7d3d46f`라면 dataset.apply의 prepared_job_id에도 같은 값을 넣는다. 결과 payload에는 그 job_id를 다시 복사하거나 별도 준비 결과 ID를 넣지 않는다. Ingestion은 해당 job_id와 준비 데이터를 같은 트랜잭션으로 보관하고, 재전달에는 같은 준비 결과를 사용한다.
 
@@ -1315,6 +1317,15 @@ Control이 수집·분석·복구에 사용할 현재 공개 스키마는 Data �
 }
 ```
 
+Analysis·Crawler·Ingestion은 `POST /internal/v1/parser:execute`로 격리 파서 실행기에 동기 요청한다. 내부 서비스 전용 Bearer 신원과 경로별 권한을 검사한다. 호출자만 인증정보를 사용하며 생성 코드 실행 환경에 전달하지 않는다.
+
+| 구분 | 형식과 처리 |
+|---|---|
+| 요청 | `timeout_ms`는 양의 정수다. timeout_ms는 묶음 전체의 요청 실행 예산이며 항목 수만큼 반복 적용하지 않는다. 호출자는 상위 작업의 남은 기한 안에서 호출 대기·재시도를 제한한다. 실행기는 묶음 예산을 초과할 작업을 시작하거나 계속하지 않는다. `items[]` 각 항목은 `item_key`, Java 함수 본문 `code`, 추출 순서의 `raw_values[]` 문자열을 가진다. 단건도 한 항목 배열로 요청한다. HTML·스냅샷·서비스 자격 증명은 보내지 않는다. |
+| 200 | `results[]`의 `item_key`가 요청과 일대일 대응한다. 성공은 `status=SUCCEEDED`와 문자열 또는 null인 `value`를, 코드 실패는 `status=FAILED`와 `failure=COMPILATION_FAILED\|EXECUTION_FAILED\|EXECUTION_LIMIT`을 반환한다. 호출자는 중복·누락·알 수 없는 키 또는 형식 불일치를 기술 실패로 처리한다. |
+| 오류 | 400은 요청 형식·중복 키, 401·403은 내부 인증·권한, 503은 실행기 가용성 장애다. 개별 코드가 실행 한도를 넘겨 중단되고 묶음 응답을 기한 내 완성할 수 있으면 해당 항목에만 EXECUTION_LIMIT을 반환한다. 묶음 안의 결과를 모두 채우기 전에 전체 기한이 끝나면 실행을 중단하고 응답할 수 있을 때 503을 반환한다. 호출자가 응답을 받지 못하면 기술 장애로 처리한다. |
+
+
 ### 12.2 일반 운영 통신과 추가 계약의 위치
 
 | 항목 | 현재 상태 | 필요한 결정 |
@@ -1330,8 +1341,8 @@ Control이 수집·분석·복구에 사용할 현재 공개 스키마는 Data �
 
 ### 12.3 최종 확인이 필요한 항목
 
-1. parser.code는 세 Java 서비스의 공통 파서 계약을 사용하며 별도 격리 없이 각 서비스 JVM에서 실행한다.
-2. 생성 코드의 공통 Java 21 환경과 입출력 ABI 및 결과 일치를 구현·검증한다. 별도 격리·자원 강제 제한과 사용자 코드 편집 UI는 MVP에 추가하지 않는다.
+1. parser.code는 세 Java 서비스가 공통으로 사용하고, 생성 코드 실행은 4.3 및 12.1의 격리 실행기 계약을 따른다.
+2. 공통 Java 21 환경과 입출력 결과 일치, 권한 제한, 실행 한도, 코드 실패·실행기 장애 구분을 검증한다.
 3. 실패한 레코드는 부분 저장과 normal_extracted_record_count에서 제외한다. 반복 수집의 정상 결과는 적용할 수 있다. 출처 추가는 실패한 출처를 적용하지 않으며, 스키마 리비전은 전체 출처 준비가 성공해야 전환한다.
 4. 20.2의 목록 종료·이동 실패 기준과 무한 스크롤의 새 항목 식별을 실제 사이트에서 통합 검증한다.
 5. DB 1~2건은 전부 비교하며 0건의 승인 샘플이 부족하면 자동 적용하지 않는다. 후보 검증은 최초 포함 최대 3회다.
@@ -1377,7 +1388,7 @@ Control이 수집·분석·복구에 사용할 현재 공개 스키마는 Data �
 |---|---|---|
 | collection.schedule.triggered | Scheduler → Control | 5, 20 |
 | analysis.execute | Control → Analysis | 1, 2, 3, 8, 9, 10, 11 |
-| analysis.completed | Analysis → Control | 1, 2, 3, 8, 9, 10, 11 |
+| analysis.completed | Analysis → Control | 1, 2, 3, 7, 8, 9, 10, 11 |
 | collection.execute | Control → Crawler | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | collection.completed | Crawler → Control | 4, 5, 6, 7, 8, 9, 10, 11, 13 |
 | schema.prepare | Control → Ingestion | 4, 13 |
@@ -1535,7 +1546,9 @@ Control은 반복 수집과 같이 Data 측 공개 스키마를 조회해 현재
 
 ### 15.7 접근과 시스템 오류 처리
 
-대응 설명서: 7절 「접근과 시스템 오류 처리」·그림 7. 전달 순서: service-message-flows.md 3.7.
+파서 실행기 장애, 인증·권한 실패, 잘못된 요청, 응답 형식 불일치는 내부 기술 오류로 분류한다. 가용성·연결·응답의 일시 장애만 작업 예산 내에서 제한 재시도한다. 오류가 확정되면 실행 서비스가 기존 결과 채널로 Control에 기술 실패를 알린다. 적재 중 기술 실패는 같은 유효한 snapshot_ref로 재처리할 수 있다.
+
+대응 설명서: 7절 「접근과 시스템 오류 처리」·그림 7과 격리 파서 호출의 그림 7-1. 전달 순서: service-message-flows.md 3.7.
 내부 재시도와 SQS 재전달을 구분한다.
 
 | 단계 | 보내는 쪽 → 받는 쪽 | 방식·메시지 | 필수 값 또는 조건 | 받은 뒤 처리·다음 단계 |
@@ -1547,7 +1560,7 @@ Control은 반복 수집과 같이 Data 측 공개 스키마를 조회해 현재
 | 2b | 실행 서비스 → Control | 최종 결과의 error | 401·403·캡차·명시적 차단 | 우회·사이트 접근 재시도 없이 중단. Control에 확인 필요 전달 |
 | 3a | Control → Crawler | SQS collection.execute | 재수집이 필요한 일시 오류, 새 명시적 작업 | 스냅샷 확보부터 다시 수행. SQS 단순 재전달이면 기존 job_id 유지 |
 | 3b | Control → Ingestion | SQS ingestion.execute | 같은 유효 snapshot_ref, 동일 규칙 | 화면 재방문 없이 읽기·적재 재시도. 기술 재전달은 같은 작업 |
-| 4 | Crawler 또는 Ingestion → Control | 각 completed 이벤트 | 성공·실패, 영향 범위 | 성공하면 이후 수집/적재 계속. 재시도 한도 소진은 종료·문제 표시 |
+| 4 | Analysis·Crawler·Ingestion → Control | SQS `analysis.completed`, `collection.completed`, `ingestion.completed` | 성공·실패, 영향 범위. 파서 호출 기술 실패는 error.code=TECHNICAL_FAILURE, error.stage=PARSER_CALL | 성공하면 후속 처리를 계속하고 기술 재처리 한도 소진 시 작업을 종료하고 문제를 표시한다. |
 | 5 | Control → 웹·이메일 | 상태 조회 응답·설정에 따른 이메일 | 최종 실패 원인 | 리비전이면 전체 적용 보류·기존 API 유지. 규칙 오류로 관찰되면 15.8~9 |
 
 ### 15.8 공유 이동 규칙 자동 복구
@@ -1566,7 +1579,7 @@ Control은 영향 대상마다 Data의 공개 스키마 또는 공개 전 승인
 | 4 | Analysis ↔ S3 | 승인 샘플 조회 | DB 0건 대상의 approved_sample_ref | 기준이 없거나 검증 불가이면 자동 적용하지 않음 |
 | 5a | Analysis → Control | SQS analysis.completed | validation PASSED, schema_change_required=false, 모든 영향 대상 검증 | 규칙 revision 갱신 및 자동 적용. 사용자 승인 없이 재수집 |
 | 5b | Analysis → Control | SQS analysis.completed | schema_change_required=true, 후보·샘플 | 해당 프로젝트별 사용자 검토·승인 흐름으로 연결 |
-| 5c | Analysis → Control | SQS analysis.completed | FAILED 또는 UNVERIFIABLE, error | 확인 필요 상태 유지. 사용자 수정·재검증 안내 |
+| 5c | Analysis → Control | SQS analysis.completed | 복구 후보의 FAILED 또는 UNVERIFIABLE, error | 확인 필요 상태 유지. 사용자 수정·재검증 안내. 파서 호출 기술 실패는 15.7 적용 |
 | 6a | Control → Crawler | SQS collection.execute | execution_reason=RECOVERY, 새 navigation_revision | 해당 규칙·대상으로 수집 실행 |
 | 6b | Crawler → Control | SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 영향 범위 재수집. 다른 프로젝트의 규칙을 임의로 변경하지 않음 |
 | 7a | Control → Ingestion | SQS ingestion.execute | 새 규칙으로 확보한 스냅샷·대상별 커넥터 | 해당 적재·준비·적용·삭제 작업 실행 |
@@ -1574,6 +1587,8 @@ Control은 영향 대상마다 Data의 공개 스키마 또는 공개 전 승인
 | 8 | Control → 웹·이메일 | 상태 조회 응답·필요한 이메일 | 완료 또는 확인 필요·승인 대기 | 재수집/적재 실패는 관찰된 오류 흐름으로 복귀 |
 
 ### 15.9 필드 커넥터와 파싱 오류 복구
+
+파서 실행기가 구분한 코드 컴파일·실행·자원 한도 실패에 이 흐름을 적용한다. Analysis의 후보 코드 실패는 같은 분석의 후보 보완·재검증 대상으로 두고, Crawler·Ingestion에서 승인 코드로 발생한 규칙 관련 실패는 영향 범위를 Control에 알린다. 기술 장애는 15.7을 따른다.
 
 Control은 대상의 공개 스키마 또는 공개 전 승인 준비 v1을 Data에서 조회하고 Control 커넥터·DB 최신값 또는 승인 S3 샘플과 함께 복구 요청에 담는다. 조회 실패는 비공개나 빈 기준이 아니다.
 
@@ -1590,7 +1605,7 @@ Control은 대상의 공개 스키마 또는 공개 전 승인 준비 v1을 Data
 | 4a | Analysis → Control | SQS analysis.completed | PASSED, schema_change_required=false | 대상 작업 보류 후 활성 또는 승인 변경 pending revision을 Data에 동기화; 성공 확인 후 Control 규칙 갱신 |
 | 4c | Control → Ingestion | SQS dataset.apply SET_CONNECTOR_REVISION | project_id, project_source_id, schema_version, expected_connector_revision, connector_revision, guard_scope, CHANGE이면 change_job_id | Data DB의 유효 revision을 조건부 갱신. 10.6 |
 | 4d | Ingestion → Control | SQS dataset.applied | 동기화 결과·현재 revision | 성공을 확인한 뒤 Control 커넥터 활성화·재수집. 미확인 시 보류·동일 job 재전달 |
-| 4b | Analysis → Control | SQS analysis.completed | 스키마 변경 필요 또는 검증 실패·기준 부족 | 승인 대기 또는 확인 필요. 기존 정상 데이터 유지 |
+| 4b | Analysis → Control | SQS analysis.completed | 스키마 변경 필요 또는 검증 실패·기준 부족 | 승인 대기 또는 확인 필요. 기존 정상 데이터 유지. 파서 호출 기술 실패는 15.7 적용 |
 | 5a | Control → Crawler | SQS collection.execute | execution_reason=RECOVERY, 새 커넥터 | 해당 규칙·대상으로 수집 실행 |
 | 5b | Crawler → Control | SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 영향 프로젝트에 필요한 화면 재수집 |
 | 6a | Control → Ingestion | SQS ingestion.execute | 같은 승인 코드·규칙과 최종 스냅샷 | 해당 적재·준비·적용·삭제 작업 실행 |
@@ -1950,7 +1965,7 @@ Ingestion 실패 예시:
 }
 ```
 
-normal_extracted_record_count는 결과에 필수로 존재하지만 추출 전에 실패한 경우 null이다. 정상 추출을 실제 수행해 0건을 관찰했을 때만 0이다. 추출하지 못한 경우를 EMPTY_EXTRACTION으로 오인하지 않는다. dataset_revision도 실패로 미확정이면 null이다. status=SUCCEEDED인 적재·준비 결과에는 정상 추출 건수 정수가 있어야 한다.
+normal_extracted_record_count는 결과에 필수로 존재하며 추출 전 실패 또는 파서 호출 장애 등으로 건수를 확정하지 못했으면 null이다. 정상 추출을 완료해 0건을 확인했을 때만 0이다. 추출하지 못한 경우를 EMPTY_EXTRACTION으로 오인하지 않는다. dataset_revision도 실패로 미확정이면 null이다. status=SUCCEEDED인 적재·준비 결과에는 정상 추출 건수 정수가 있어야 한다.
 
 일반 수집 PARTIAL은 collection.completed.project_results에 적재 가능한 성공 프로젝트와 실패 프로젝트를 각각 담는다. 기존 형식의 status·can_ingest·error를 사용하므로 별도 partial 전용 메시지는 추가하지 않는다.
 
@@ -2112,7 +2127,7 @@ Control은 같은 owner_id의 진행 중·완료된 탈퇴 정리 요청을 중�
 
 ### 17.2 구현·운영 확인 항목
 
-1. 세 Java 서비스의 공통 파서 모듈 및 동일 결과를 구현·검증한다. 생성 코드는 별도 격리 없이 서비스 JVM에서 실행한다. 실제 실행기는 별도로 구현한다.
+1. 세 Java 서비스의 동일 코드·입력에 같은 결과가 나오는지, 4.3의 격리·자원 한도와 12.1의 내부 호출 실패가 올바르게 처리되는지 검증한다.
 2. 승인 샘플이 부족하면 자동 적용하지 않으며 후보 검증은 최초 포함 최대 3회다. DB 1~2건은 모두 비교·일치해야 한다. 필드 실패 레코드는 부분 저장하지 않으며, 규칙 관련 실패로 비교·수집을 계속할 수 없으면 자동 복구한다. 실패 세부 판정은 구현 검증 대상이다.
 3. 16.5 계정 정리 내부 HTTP와 탈퇴 상태 원본 확인을 구현하고, 삭제 작업 원장의 실제 재처리 보관 기간을 설정한다.
 4. API 키 원본 조회·즉시 폐기와 버전 전환의 Data 캐시 일관성 구현 검증. 필요 전송 상황은 15.18에 표시했으며 임의의 새 큐·이벤트를 추가하지 않았다.
@@ -2183,7 +2198,7 @@ Ingestion → Control `schema.prepared` payload:
 
 - Control은 프로젝트 일반 쓰기를 보류하고 진행 중 쓰기 종료 후 Data 전환·Control 커넥터 활성화를 완료하고 재개한다. 프로젝트 상태 행 잠금, change_job_id·schema_version 검사, receipt·Outbox를 동일 Data DB 트랜잭션으로 적용한다. Control과 Data를 단일 트랜잭션으로 가정하지 않는다.
 - Analysis·Crawler는 Control의 job_id·attempt_id lease를 선점·갱신하고 시도별 S3 결과를 발행한다. Control이 유효 시도·lease·revision을 DB에서 확인해 채택하며 미완료 lease 만료 시 동일 job을 재발행한다. Ingestion은 DB receipt와 결과 Outbox를 원자 처리한다.
-- 일반 수집의 정상 레코드는 적재하고 실패 레코드는 제외한다. 비교를 계속할 수 없으면 해당 프로젝트 출처를 복구한다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패·0건은 전체 보류다. 복구 후보 검증은 최초 포함 최대 3회이며 모든 기준이 일치하지 않거나 기준 부족이면 확인 필요다. 공유 규칙은 모든 영향 프로젝트 통과 시 적용한다.
+- 일반 수집의 정상 레코드는 적재하고 실패 레코드는 제외한다. 규칙 관련 실패로 비교를 계속할 수 없으면 해당 프로젝트 출처를 복구한다. 파서 실행기 장애는 기술 오류 처리를 따른다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패·0건은 전체 보류다. 복구 후보 검증은 최초 포함 최대 3회이며 모든 기준이 일치하지 않거나 기준 부족이면 확인 필요다. 공유 규칙은 모든 영향 프로젝트 통과 시 적용한다.
 - Control이 DLQ 처리·기한 점검을 담당해 최종 상태를 남긴다. 수신 기록·S3 시도별 result.json은 재전달·DLQ 재처리 가능 기간 이상 보관하며 보존 기간의 수치는 환경 설정이다. Control 주기 정리는 참조와 실제 실행 종료를 확인하고 삭제 확정과 새 참조 등록을 직렬화한다.
 
 - 삭제 영향 조회가 실패하면 확인 불가로 표시하고 승인을 보류한다. 복구 후 다시 조회해 실제 영향 범위를 확인한다.
