@@ -1,0 +1,86 @@
+{
+  "type": "object",
+  "properties": {
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "existing_field_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "api_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "STRING",
+              "NUMBER",
+              "BOOLEAN",
+              "DATE",
+              "DATETIME",
+              "URL"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project_source_id": {
+                  "type": "string"
+                },
+                "candidate_key": {
+                  "type": "string"
+                },
+                "parser_code": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "project_source_id",
+                "candidate_key",
+                "parser_code"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "existing_field_id",
+          "api_name",
+          "display_name",
+          "type",
+          "reason",
+          "mappings"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "fields"
+  ],
+  "additionalProperties": false
+}
