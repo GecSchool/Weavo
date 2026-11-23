@@ -101,6 +101,27 @@ class JobWorkerTest {
   }
 
   @Test
+  void retriesTheSameImmediateIssueBeforeStoringCompletion() throws InterruptedException {
+    when(control.claim(eq(JOB_ID), any())).thenReturn(ACQUIRED);
+    String issue = "issue with unchanged identity";
+    doThrow(SdkClientException.create("send timeout")).doNothing().when(transport).publish(issue);
+    try (var worker =
+        worker(
+            TIMING,
+            attempt -> {
+              assertThat(attempt.publishNotice(issue)).isTrue();
+              return new Result(KEY, RESULT);
+            })) {
+      worker.handle(FIRST);
+      var ordered = inOrder(transport);
+      ordered.verify(transport, times(2)).publish(issue);
+      ordered.verify(transport).store(KEY, RESULT);
+      ordered.verify(transport).publish(RESULT);
+      ordered.verify(transport).delete(FIRST);
+    }
+  }
+
+  @Test
   void aBusyDuplicateBacksOffOnlyItsReceipt() throws InterruptedException {
     when(control.claim(eq(JOB_ID), any()))
         .thenReturn(ACQUIRED, new Claim(Status.BUSY, NOW.plusSeconds(10)));

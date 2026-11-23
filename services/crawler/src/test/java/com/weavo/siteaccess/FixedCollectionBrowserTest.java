@@ -16,6 +16,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.Collection
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProjectResult;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.JobIssueDetected;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.LatestRecord;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.Schema;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.SchemaField;
 import com.weavo.extraction.FieldExtractor;
@@ -130,6 +131,279 @@ class FixedCollectionBrowserTest {
             .isEqualTo(site.url("/detail/" + (index + 1)));
       }
       assertThat(titles).containsExactly("첫 글", "둘째 글");
+    }
+  }
+
+  @Test
+  void equivalentLinkSelectorsShareADetailAndOnlyActiveProjectsConsumeLaterItems()
+      throws Exception {
+    String first =
+        """
+        <main class=list><article><h2>첫 글</h2><a class=alternate href=/detail/1>상세</a></article></main>
+        <a class=next href=/next>다음</a>
+        """;
+    String second =
+        """
+        <main class=list><article><h2>둘째 글</h2><a class=alternate href=/detail/2>상세</a></article></main>
+        """;
+    try (var site = new TestSite(first, Map.of("/next", second))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var rule =
+          base.payload().projects().getFirst().fieldConnectors().getLast().detailNavigation();
+      var altRule =
+          new DetailNavigation(
+              rule.access(),
+              new DetailOpen(OpenType.LINK, ".alternate", "href", Target.CURRENT_TAB),
+              rule.returnRule());
+      var old = base.payload().projects().getFirst();
+      var fast =
+          new CollectionProject(
+              old.projectId(),
+              old.projectSourceId(),
+              old.schemaVersion(),
+              old.connectorRevision(),
+              "INCREMENTAL",
+              old.schema(),
+              old.fieldConnectors(),
+              List.of(new LatestRecord(Map.of(TITLE, "첫 글", BODY, "본문 1"))));
+      var full = project(AUTHOR, ".author", altRule);
+      var navigation =
+          browserList(
+              site.url("/list"),
+              new Pagination(
+                  PaginationType.NEXT_LINK, ".next", "href", ".list", null, null, null, null));
+      navigation =
+          new Navigation(
+              navigation.listUrl(),
+              List.of(),
+              new ListAccess(AccessMethod.BROWSER, ".list"),
+              navigation.itemSelector(),
+              navigation.pagination());
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "SCHEDULED", 20, 4L, navigation, List.of(fast, full));
+      var execution = new Job<>(base.id(), base.expiresAt(), base.workBudget(), request);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(execution, attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("SUCCEEDED");
+      var pages = read(stored.get(result.snapshotRef().key())).path("list_snapshots");
+      var firstItem = pages.get(0).path("items").get(0);
+      assertThat(firstItem.path("details")).hasSize(1);
+      assertThat(firstItem.path("details").get(0).path("consumers")).hasSize(2);
+      var laterItem = pages.get(1).path("items").get(0);
+      assertThat(laterItem.path("source_urls")).hasSize(1);
+      assertThat(laterItem.path("source_urls").get(0).path("project_source_id").asString())
+          .isEqualTo(full.projectSourceId());
+      assertThat(laterItem.path("details").get(0).path("consumers")).hasSize(1);
+      assertThat(
+              laterItem
+                  .path("details")
+                  .get(0)
+                  .path("consumers")
+                  .get(0)
+                  .path("project_source_id")
+                  .asString())
+          .isEqualTo(full.projectSourceId());
+      assertThat(site.detailRequests.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void skipsBrowserOnHttpPageWhenOnlyListProjectsRemain() throws Exception {
+    String first =
+        "<main class=list><article><h2>첫 글</h2><a href=/detail/1>상세</a></article>"
+            + "<a class=next href=/next>다음</a></main>";
+    String second =
+        "<main class=list><article><h2>둘째 글</h2></article></main>"
+            + "<script>document.querySelector('h2').textContent = 'rendered variant';</script>";
+    try (var site = new TestSite(first, Map.of("/next", second))) {
+      var base = job(site.url("/list"), AccessMethod.HTTP, OpenType.LINK);
+      var payload = base.payload();
+      var old = payload.projects().getFirst();
+      var fast =
+          new CollectionProject(
+              old.projectId(),
+              old.projectSourceId(),
+              1L,
+              2L,
+              "INCREMENTAL",
+              old.schema(),
+              old.fieldConnectors(),
+              List.of(new LatestRecord(Map.of(TITLE, "첫 글", BODY, "본문 1"))));
+      var navigation =
+          new Navigation(
+              site.url("/list"),
+              List.of(),
+              new ListAccess(AccessMethod.HTTP, null),
+              "article",
+              new Pagination(
+                  PaginationType.NEXT_LINK, ".next", "href", null, null, null, null, null));
+      var full = listOnlyJob(navigation).payload().projects().getFirst();
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "SCHEDULED", 20, 4L, navigation, List.of(fast, full));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status())
+          .withFailMessage(
+              "status=%s, error=%s, requests=%s", result.status(), result.error(), site.requests)
+          .isEqualTo("SUCCEEDED");
+      assertThat(result.projectResults().getLast().normalExtractedRecordCount()).isEqualTo(2L);
+    }
+  }
+
+  @Test
+  void differentModalControlsKeepSeparateDetailObjectsAtTheSameAddress() throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", false))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL);
+      var payload = base.payload();
+      var rule = payload.projects().getFirst().fieldConnectors().getLast().detailNavigation();
+      var alternate =
+          project(
+              AUTHOR,
+              ".author",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.CLICK, "a", null, Target.MODAL),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(),
+              payload.executionReason(),
+              20,
+              4L,
+              payload.navigation(),
+              List.of(payload.projects().getFirst(), alternate));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("SUCCEEDED");
+      var details =
+          read(stored.get(result.snapshotRef().key()))
+              .path("list_snapshots")
+              .get(0)
+              .path("items")
+              .get(0)
+              .path("details");
+      assertThat(details).hasSize(2);
+      assertThat(details.get(0).path("url").asString())
+          .isEqualTo(details.get(1).path("url").asString());
+      assertThat(key(details.get(0))).isNotEqualTo(key(details.get(1)));
+      assertThat(details.get(0).path("consumers")).hasSize(1);
+      assertThat(details.get(1).path("consumers")).hasSize(1);
+    }
+  }
+
+  @Test
+  void missingDetailControlStopsOnlyItsProjectAndKeepsTheListUsable() throws Exception {
+    try (var site = new TestSite(LIST)) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var normal = payload.projects().getLast();
+      var rule = normal.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              BODY,
+              ".body",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.LINK, ".missing", "href", Target.CURRENT_TAB),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, normal));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status()).withFailMessage("%s", result.error()).isEqualTo("PARTIAL");
+      assertThat(result.projectResults().getFirst().error().stage()).isEqualTo("DETAIL_NAVIGATION");
+      assertThat(result.projectResults().getLast().canIngest()).isTrue();
+      assertThat(site.detailRequests.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void missingModalButtonOnlyStopsItsProject() throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", false))) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL);
+      var payload = base.payload();
+      var normal = payload.projects().getFirst();
+      var rule = normal.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              AUTHOR,
+              ".author",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.CLICK, ".missing", null, Target.MODAL),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, normal));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+                  attempt(Duration.ofSeconds(15)));
+      assertThat(result.status())
+          .withFailMessage("actual status=%s, top-level error=%s", result.status(), result.error())
+          .isEqualTo("PARTIAL");
+      assertThat(result.projectResults().getLast().canIngest()).isTrue();
+    }
+  }
+
+  @Test
+  void completedPreservesDetailFailureFieldsWhenIssueArrivesLater() throws Exception {
+    try (var site = new TestSite(LIST)) {
+      var base = job(site.url("/list"), AccessMethod.BROWSER, OpenType.LINK);
+      var payload = base.payload();
+      var good = payload.projects().getLast();
+      var rule = good.fieldConnectors().getLast().detailNavigation();
+      var broken =
+          project(
+              BODY,
+              ".body",
+              new DetailNavigation(
+                  rule.access(),
+                  new DetailOpen(OpenType.LINK, ".missing", "href", Target.CURRENT_TAB),
+                  rule.returnRule()));
+      var request =
+          new CollectionExecute(
+              payload.sourceId(), "INITIAL", 20, 4L, payload.navigation(), List.of(broken, good));
+      var contract = new ContractJson();
+      var processor =
+          new CollectionJobProcessor(
+              contract,
+              CollectionJobHandlers.using(collection(site.access(), (key, mime, bytes) -> {})));
+      var output =
+          processor.execute(
+              new Job<>(base.id(), base.expiresAt(), base.workBudget(), request),
+              attempt(Duration.ofSeconds(15)));
+      var result =
+          contract.eventPayload(contract.readEvent(output.body()), CollectionCompleted.class);
+      var issue =
+          contract.eventPayload(
+              contract.readEvent(output.notices().getFirst()), JobIssueDetected.class);
+      assertThat(issue.fieldIds()).containsExactly(BODY);
+      var completedError = result.projectResults().getFirst().error();
+      assertThat(completedError.details()).containsEntry("field_ids", issue.fieldIds());
+      assertThat(completedError).isEqualTo(issue.error());
     }
   }
 
@@ -764,6 +1038,73 @@ class FixedCollectionBrowserTest {
   private static Navigation browserList(String address, Pagination rule) {
     return new Navigation(
         address, List.of(), new ListAccess(AccessMethod.BROWSER, ".ready"), "article", rule);
+  }
+
+  @Test
+  void cumulativeSegmentsSpanDomRepaintsAndKeepTheFinalShortSegment() throws Exception {
+    String list =
+        """
+        <main class=ready>
+          <article><h2>A</h2><a href=/x/a>A</a></article>
+          <article><h2>B</h2><a href=/x/b>B</a></article>
+          <article><h2>N1</h2><a href=/x/1>1</a></article>
+        </main>
+        <button class=next>더 보기</button>
+        <script>
+          let n = 0;
+          document.querySelector('.next').onclick = event => {
+            document.querySelector('article').dataset.view = 'seen';
+            for (let i = 0; i < 2; i++) {
+              const id = ++n;
+              document.querySelector('main').insertAdjacentHTML(
+                'beforeend', '<article><h2>새 값 ' + id + '</h2><a href=/y/' + id + '>Link</a></article>');
+            }
+            if (n === 4) event.target.disabled = true;
+          };
+        </script>
+        """;
+    try (var site = new TestSite(list)) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".ready", null, null, null, null);
+      var full = listOnlyJob(browserList(site.url("/list"), rule));
+      var request = full.payload();
+      var source = request.projects().getFirst();
+      var incremental =
+          new CollectionProject(
+              source.projectId(),
+              source.projectSourceId(),
+              source.schemaVersion(),
+              source.connectorRevision(),
+              "INCREMENTAL",
+              source.schema(),
+              source.fieldConnectors(),
+              List.of(
+                  new LatestRecord(Map.of(TITLE, "A")),
+                  new LatestRecord(Map.of(TITLE, "B")),
+                  new LatestRecord(Map.of(TITLE, "C"))));
+      var job =
+          new Job<>(
+              full.id(),
+              full.expiresAt(),
+              full.workBudget(),
+              new CollectionExecute(
+                  request.sourceId(),
+                  "SCHEDULED",
+                  request.maxDurationSeconds(),
+                  request.navigationRevision(),
+                  request.navigation(),
+                  List.of(incremental)));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(job, attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.stopReason()).withFailMessage("%s", result.error()).isEqualTo("NO_CHANGE");
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(7L);
+      var pages = read(stored.get(result.snapshotRef().key())).path("list_snapshots");
+      assertThat(pages.get(2).path("items").get(0).path("item_index").asInt()).isEqualTo(5);
+      assertThat(pages.get(2).path("items").get(1).path("item_index").asInt()).isEqualTo(6);
+    }
   }
 
   private static Job<CollectionExecute> listOnlyJob(Navigation nav) {

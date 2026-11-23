@@ -369,7 +369,7 @@ DETAIL은 항상 BROWSER다. `open`은 LINK `{ "type":"LINK", "selector":"a.titl
 }
 ```
 
-`items[].source_urls`의 project_source_id 존재 자체가 그 항목에 대한 해당 프로젝트의 처리 참여 표시다. 참여했지만 직접 URL이 없으면 source_url=null로 기록한다. 표시가 없는 프로젝트는 그 항목을 의도적으로 처리하지 않은 것이며 Ingestion은 추출·오류 판정을 하지 않는다. 대상 참여 표시는 컬렉션 메시지의 project_source_id와 일치해야 하며 중복 ID는 잘못된 manifest다. 참여 표시가 있는 항목의 상세 수집 실패는 프로젝트 결과 오류로 기록하고 범위 밖으로 바꾸지 않는다. 각 프로젝트의 종료는 7.2에 따라 현재 또는 추가 구간을 완전히 처리한 뒤 적용하며 마지막 참여 구간까지 표시한다. FULL 대상은 종료 조건 또는 시간 제한까지 표시한다.
+`items[].source_urls`의 project_source_id 존재 자체가 그 항목에 대한 해당 프로젝트의 처리 참여 표시다. 참여했지만 직접 URL이 없으면 source_url=null로 기록한다. 표시가 없는 프로젝트는 그 항목을 의도적으로 처리하지 않은 것이며 Ingestion은 추출·오류 판정을 하지 않는다. 대상 참여 표시는 컬렉션 메시지의 project_source_id와 일치해야 하며 중복 ID는 잘못된 manifest다. 참여한 항목의 필드 또는 상세 수집이 실패하면 프로젝트 오류를 기록하고 manifest의 선택 필드 failed_project_source_ids에도 해당 ID를 남긴다. 참여 표시는 유지하며 Ingestion은 실패로 표시된 프로젝트의 그 행만 제외한다. 각 프로젝트의 종료는 7.2에 따라 현재 또는 추가 구간을 완전히 처리한 뒤 적용하며 마지막 참여 구간까지 표시한다. FULL 대상은 종료 조건 또는 시간 제한까지 표시한다.
 
 각 `items[].source_urls`는 프로젝트 출처별 항목 직접 접근 URL을 전달한다. Crawler는 해당 항목을 수집한 각 프로젝트 출처별로 확인한 URL 또는 null을 기록하고 Ingestion은 일치하는 project_source_id의 값을 RECORD.source_url에 사용한다. 항목에 명확한 직접 URL을 확인할 수 없다면 null이다. 이 값은 목록·상세 스냅샷의 관찰 `url`과 다르다.
 
@@ -861,7 +861,7 @@ execution_reason은 INITIAL, SCHEDULED, MANUAL, REVISION, RECOVERY다. collectio
 }
 ```
 
-stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLOCKED, TECHNICAL_FAILURE, EMPTY_LIST, CANCELLED다. latest_data_confirmed 같은 새 결과 코드는 도입하지 않는다. TIME_LIMIT과 정상 END_OF_LIST는 성공 종료가 가능하다. NO_CHANGE는 최신값 종료 조건이 충족된 출처의 조기 종료 사유다. 추가 구간까지 신규 적재 후보가 확보되었다면 스냅샷과 적재 대상을 남긴다. 프로젝트 일부만 조기 종료한 경우 전체 출처의 종료 사유는 실제 실행 종료에 맞춘다. 증분 수집에서 정상 추출값이 전달받은 최신 기준 중 어느 것과도 같지 않으면 적재 후보로 남긴다. Ingestion이 전체 저장값과 대조해 신규 여부를 결정한다. 이미 일치 집계에 사용한 기준과 값이 같은 항목은 미충족 기준이 없더라도 그 이유만으로 적재 후보가 되지 않는다. 최신값 조기 종료 때 프로젝트별로 적재 후보가 있고 유효한 스냅샷·기존 적용 조건을 충족하면 can_ingest=true로 표시한다. 최신값 조기 종료에서 적재할 대상이 하나도 없으면 snapshot_ref=null로 기존 정상 세트를 유지한다. 다른 대상이 적재 가능하면 해당 대상이 사용할 최종 스냅샷을 남긴다. PARTIAL이면 실패 프로젝트와 적재 가능한 프로젝트를 구분한다. 일반 수집의 정상적으로 확보·검증된 레코드는 적용할 수 있다. 커넥터 또는 이동 규칙 관련 실패로 완료하지 못한 대상은 복구 대상으로 표시하고, 실행기 장애는 15.7의 기술 재처리 대상으로 표시한다. completed는 먼저 전달한 issue와 같은 오류·0건 범위를 포함해 전달 순서가 뒤집혀도 문제 표시를 놓치지 않는다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패는 전체 전환 보류다. can_ingest는 유효 스냅샷·대상별 적용 조건을 확인해 설정한다.
+stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLOCKED, TECHNICAL_FAILURE, EMPTY_LIST, CANCELLED다. latest_data_confirmed 같은 새 결과 코드는 도입하지 않는다. TIME_LIMIT과 정상 END_OF_LIST는 성공 종료가 가능하다. NO_CHANGE는 최신값 종료 조건이 충족된 출처의 조기 종료 사유다. 추가 구간까지 신규 적재 후보가 확보되었다면 스냅샷과 적재 대상을 남긴다. 프로젝트 일부만 조기 종료한 경우 전체 출처의 종료 사유는 실제 실행 종료에 맞춘다. 증분 수집에서 정상 추출값이 전달받은 최신 기준 중 어느 것과도 같지 않으면 적재 후보로 남긴다. Ingestion이 전체 저장값과 대조해 신규 여부를 결정한다. 이미 일치 집계에 사용한 기준과 값이 같은 항목은 미충족 기준이 없더라도 그 이유만으로 적재 후보가 되지 않는다. 최신값 조기 종료 때 프로젝트별로 적재 후보가 있고 유효한 스냅샷·기존 적용 조건을 충족하면 can_ingest=true로 표시한다. 최신값 조기 종료에서 적재할 대상이 하나도 없으면 snapshot_ref=null로 기존 정상 세트를 유지한다. 다른 대상이 적재 가능하면 해당 대상이 사용할 최종 스냅샷을 남긴다. PARTIAL이면 실패 프로젝트와 적재 가능한 프로젝트를 구분한다. 일반 수집의 정상적으로 확보·검증된 레코드는 적용할 수 있다. 커넥터 또는 이동 규칙 관련 실패로 완료하지 못한 대상은 복구 대상으로 표시하고, 실행기 장애는 15.7의 기술 재처리 대상으로 표시한다. completed는 먼저 전달한 issue와 같은 오류·0건 범위를 포함해 전달 순서가 뒤집혀도 문제 표시를 놓치지 않는다. Crawler는 프로젝트별 오류의 error.details.field_ids에 영향 필드 ID 배열을 담으며, 같은 문제의 중간 이벤트 field_ids와 일치시킨다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패는 전체 전환 보류다. can_ingest는 유효 스냅샷·대상별 적용 조건을 확인해 설정한다.
 
 ## 8 적재·준비 요청과 결과
 
@@ -1183,7 +1183,7 @@ BEGIN/END와 각 쓰기가 같은 행을 잠그므로 선행 커밋은 END 결�
 
 ### 10.6 기존 출처의 커넥터 revision 동기화
 
-기존 활성 출처의 스키마 유지 커넥터 수정·자동 복구가 성공하면 Control은 그 프로젝트 출처의 새 수집과 적재 발행을 보류한다. 공유 수집에 참여한 다른 프로젝트는 계속할 수 있다. Control은 기존 Ingestion 작업 큐에 dataset.apply `SET_CONNECTOR_REVISION`을 보낸다. 사용자 승인 없는 자동 복구를 위해 별도 승인 변경이나 새 큐는 만들지 않는다.
+기존 활성 출처의 스키마 유지 커넥터 수정·자동 복구가 성공하면 Control은 그 프로젝트 출처의 새 수집과 적재 발행을 보류한다. 같은 실행의 부분 성공 결과에 예약된 적재가 있다면 기존 revision으로 종료를 확인한 후 Data 가드를 갱신한다. 공유 수집에 참여한 다른 프로젝트는 계속할 수 있다. Control은 기존 Ingestion 작업 큐에 dataset.apply `SET_CONNECTOR_REVISION`을 보낸다. 사용자 승인 없는 자동 복구를 위해 별도 승인 변경이나 새 큐는 만들지 않는다.
 
 ```json
 {
@@ -1971,7 +1971,7 @@ Ingestion 실패 예시:
 
 normal_extracted_record_count는 결과에 필수로 존재하며 추출 전 실패 또는 파서 호출 장애 등으로 건수를 확정하지 못했으면 null이다. 정상 추출을 완료해 0건을 확인했을 때만 0이다. 추출하지 못한 경우를 EMPTY_EXTRACTION으로 오인하지 않는다. dataset_revision도 실패로 미확정이면 null이다. status=SUCCEEDED인 적재·준비 결과에는 정상 추출 건수 정수가 있어야 한다.
 
-일반 수집 PARTIAL은 collection.completed.project_results에 적재 가능한 성공 프로젝트와 실패 프로젝트를 각각 담는다. 기존 형식의 status·can_ingest·error를 사용하므로 별도 partial 전용 메시지는 추가하지 않는다.
+일반 반복 수집에서 일부 프로젝트가 실패해도 다른 프로젝트는 계속 처리한다. 같은 프로젝트의 앞선 정상 적재 후보가 남았다면 해당 결과는 status=PARTIAL, can_ingest=true로 기록하고 오류도 전달한다. 검증한 적재 후보가 없는 실패 프로젝트는 can_ingest=false다. Control은 유효한 스냅샷과 can_ingest로 적재 요청을 결정하며, 부분 실패 상태와 오류를 적재 완료 뒤에도 보존한다. Ingestion은 manifest의 failed_project_source_ids에 자신이 표시된 행을 제외하고 나머지 참여 행을 최종 검증한다. 최초·리비전·복구 업무에는 실패 대상의 부분 적재를 적용하지 않는다.
 
 ### 16.3 복구 요청의 failure_context와 0건 이슈
 
@@ -2347,7 +2347,7 @@ NONE은 첫 화면만 검증한다. 다음 링크가 없거나 명시적으로 �
 
 Control은 발행 직전 최신값의 schema_version과 공개 schema_version 및 현재 승인 커넥터 버전을 확인한다. 전환이 진행 중이거나 버전이 다르면 일반 작업 발행을 보류하고 조회부터 재시도한다. 출처별 단일 논리 작업 보류와 Data 쓰기 시 가드 검사는 유지한다.
 
-수동 요청은 별도 요청 job이며 동일 실행 대상이면 기존 collection에 연결한다. 중복 사용자 요청은 새 요청 job을 만들어 기존 실행에 연결하고, 취소 API는 MVP에서 제공하지 않는다. JOB_EXECUTION_LINK는 수동 요청과 collection_job_id·project_source_id를 연결한다. 정기·수동 공통으로 ingestion JOB.parent_job_id는 collection job이고 적재 JOB_PROJECT_RESULT의 project_source_id로 해당 출처를 찾는다. 수집 실패는 그 출처 실패, 수집 성공 후 적재 필요 시 해당 ingestion 완료까지 RUNNING, NO_CHANGE라도 새 데이터가 있어 can_ingest=true이면 적재를 기다리고, 전혀 변경이 없어 적재가 불필요하면 성공이다. 모든 대상 종료 후 모두 성공이면 SUCCEEDED, 혼합이면 PARTIAL, 모두 실패면 FAILED다. 늦게 연결한 요청도 Control의 수집·적재 작업 원장을 조회하고 미확인 결과는 원래 ingestion.execute를 같은 job_id와 payload로 재전달하여 receipt의 기존 결과 재발행을 받아 동일 상태로 수렴한다. 다른 프로젝트 결과를 반환하지 않는다.
+수동 요청은 별도 요청 job이며 동일 실행 대상이면 기존 collection에 연결한다. 중복 사용자 요청은 새 요청 job을 만들어 기존 실행에 연결하고, 취소 API는 MVP에서 제공하지 않는다. JOB_EXECUTION_LINK는 수동 요청과 collection_job_id·project_source_id를 연결한다. 정기·수동 공통으로 ingestion JOB.parent_job_id는 collection job이고 적재 JOB_PROJECT_RESULT의 project_source_id로 해당 출처를 찾는다. 수집 실패는 그 출처 실패다. 일반 반복 수집의 PARTIAL에 can_ingest=true가 있으면 적재 완료까지 RUNNING을 표시하고 이후 부분 실패를 보존한다. 수집 성공 후 적재가 필요하면 해당 ingestion 완료까지 RUNNING을 유지한다. NO_CHANGE라도 새 데이터가 있어 can_ingest=true이면 적재를 기다리고, 전혀 변경이 없어 적재가 불필요하면 성공이다. 모든 대상 종료 후 모두 성공이면 SUCCEEDED, 혼합이면 PARTIAL, 모두 실패면 FAILED다. 늦게 연결한 요청도 Control의 수집·적재 작업 원장을 조회하고 미확인 결과는 원래 ingestion.execute를 같은 job_id와 payload로 재전달하여 receipt의 기존 결과 재발행을 받아 동일 상태로 수렴한다. 다른 프로젝트 결과를 반환하지 않는다.
 
 공개 전 복구는 준비된 승인 정의와 승인 샘플, 공개 후는 공개 스키마와 DB 최신값을 사용한다. CHANGE 동기화가 공개 경합으로 거절되면 dataset.applied.error.code=SOURCE_ALREADY_PUBLISHED와 details의 project_source_id·schema_version·connector_revision·ingestion_job_id를 반환한다. Control은 기존 ingestion.execute의 원래 job_id·envelope·payload를 재전달하고 Ingestion은 receipt의 기존 ingestion.completed와 event_id를 재발행한다. Control은 해당 수집·출처에 속하는 성공 결과를 확인한 뒤 ACTIVE로 다시 동기화한다. 재확인 전에는 새 규칙을 활성화하지 않는다. 일반 revision 불일치·CLOSED는 각기 REVISION_CONFLICT·CHANGE_CLOSED이며 자동으로 성공 처리하지 않는다.
 

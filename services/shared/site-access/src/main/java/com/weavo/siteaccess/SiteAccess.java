@@ -18,6 +18,11 @@ public final class SiteAccess {
     this.transport = new HttpTransport(Objects.requireNonNull(coordinator), dns);
   }
 
+  /** Uses the same URL rules as an actual navigation without resolving DNS or sending a request. */
+  public static URI normalizeAddress(String address) {
+    return PublicUrls.parse(address).uri();
+  }
+
   public SiteSession open(WorkBudget budget) {
     return new SiteSession(transport, Objects.requireNonNull(budget));
   }

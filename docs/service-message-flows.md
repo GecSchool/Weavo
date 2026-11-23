@@ -284,7 +284,7 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 
 | 순서 | 보내는 쪽 → 받는 쪽 / 통신 | 전달 내용·조건 | 형식 참조 번호 | 받은 뒤 처리·다음 단계 |
 |---|---|---|---|---|
-| 1a | Crawler → Control / job.issue.detected 또는 collection.completed | scope=PROJECT_SOURCE, 임시 추출·parser 실패 | 7.3, 9.1, 16.3, 1.4 — 메시지 형식 | 해당 프로젝트·출처의 비교 중단. 다른 정상 프로젝트는 계속 |
+| 1a | Crawler → Control / job.issue.detected 또는 collection.completed | scope=PROJECT_SOURCE, 임시 추출·parser 실패 | 7.3, 9.1, 16.3, 1.4 — 메시지 형식 | 해당 대상의 비교를 중단한다. 일반 반복에서 그 대상의 정상 적재 후보가 남으면 기존 규칙으로 적재하고, 해당 적재 종료 후 최신값을 조회한다. 다른 정상 프로젝트는 계속한다. |
 | 1b | Ingestion → Control / job.issue.detected 또는 ingestion.completed | 최종 추출·변환·parser 실패, 확보 시 failure_evidence 참조 | 8.2, 16.2, 9.1, 16.3, 1.4 — 메시지 형식 | DB/S3 기술 오류와 구분. 원문은 7일 sidecar에서 확인. 실패 레코드는 저장·정상 건수에서 제외. 비교·수집 불가한 규칙 관련 실패는 자동 복구; 후보 검증은 최초 포함 최대 3회 |
 | 2a | Control → Ingestion / 내부 HTTP 최신값 조회 | source_id, targets(project_id, project_source_id) | 16.1 — 내부 HTTP 형식 | 최신 저장 필드값을 조회 |
 | 2b | Ingestion → Control / HTTP 200 또는 오류 | 대상별 latest_records 또는 정형 error | 16.1, 1.4 — 내부 HTTP 형식 | 복구 기준 확보. DB 0건이면 승인 샘플 참조 준비 |

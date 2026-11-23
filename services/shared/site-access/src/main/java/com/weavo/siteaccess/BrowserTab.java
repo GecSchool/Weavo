@@ -3,6 +3,7 @@ package com.weavo.siteaccess;
 import static com.weavo.siteaccess.SiteAccessException.Kind.ACCESS_BLOCKED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.BROWSER_FAILED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.BROWSER_TIMEOUT;
+import static com.weavo.siteaccess.SiteAccessException.Kind.DETAIL_CONTROL_UNAVAILABLE;
 import static com.weavo.siteaccess.SiteAccessException.Kind.REQUEST_COORDINATION_FAILED;
 import static com.weavo.siteaccess.SiteAccessException.Kind.RESPONSE_TOO_LARGE;
 import static com.weavo.siteaccess.SiteAccessException.Kind.ROBOTS_DENIED;
@@ -532,8 +533,13 @@ public final class BrowserTab implements AutoCloseable {
                 + " if (document.URL.split('#', 1)[0] !== url) return null;"
                 + " const item = document.querySelectorAll(itemSelector)[index];"
                 + " if (item?.outerHTML !== html) return null;"
-                + " const matches = item.querySelectorAll(selector);"
-                + " return matches.length === 1 ? matches[0] : null;"
+                + " try {"
+                + "   const matches = item.querySelectorAll(selector);"
+                + "   return matches.length === 1 ? matches[0] : false;"
+                + " } catch (error) {"
+                + "   if (error.name === 'SyntaxError') return false;"
+                + "   throw error;"
+                + " }"
                 + " }",
             Map.of(
                 "url",
@@ -549,6 +555,10 @@ public final class BrowserTab implements AutoCloseable {
     try {
       var element = handle.asElement();
       if (element == null) {
+        if (Boolean.FALSE.equals(handle.jsonValue())) {
+          throw new SiteAccessException(
+              DETAIL_CONTROL_UNAVAILABLE, "The verified row has no unique detail control");
+        }
         throw new SiteAccessException(BROWSER_FAILED, "Detail target could not be verified");
       }
       return action.apply(element);

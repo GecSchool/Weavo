@@ -6,14 +6,24 @@ import com.weavo.extraction.FieldExtractor;
 import com.weavo.extraction.FieldValueConverter.Type;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.HtmlScope;
+import com.weavo.siteaccess.SiteAccess;
+import com.weavo.siteaccess.SiteAccessException;
 import com.weavo.siteaccess.WorkBudget;
 import com.weavo.siteaccess.rule.FieldConnector;
+import com.weavo.siteaccess.rule.FieldConnector.DetailAccess;
 import com.weavo.siteaccess.rule.FieldConnector.DetailNavigation;
+import com.weavo.siteaccess.rule.FieldConnector.DetailOpen;
+import com.weavo.siteaccess.rule.FieldConnector.DetailReturn;
+import com.weavo.siteaccess.rule.FieldConnector.OpenType;
+import com.weavo.siteaccess.rule.FieldConnector.Target;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /** Supplies the scopes for fixed collection and validates values using the shared extractor. */
 final class FixedCollectionFields {
@@ -51,12 +61,66 @@ final class FixedCollectionFields {
     return listFields;
   }
 
-  Map<DetailNavigation, List<Field>> detailGroups() {
-    return detailGroups;
+  boolean hasDetails(Predicate<String> participates) {
+    return detailGroups.values().stream()
+        .flatMap(List::stream)
+        .anyMatch(field -> participates.test(field.projectSourceId()));
   }
 
-  void validate(List<Field> fields, HtmlScope scope, WorkBudget budget) {
+  List<DetailVisit> detailVisits(HtmlScope item, Set<String> participants) {
+    Map<VisitKey, DetailVisit> visits = new LinkedHashMap<>();
+    for (var entry : detailGroups.entrySet()) {
+      var fields =
+          entry.getValue().stream()
+              .filter(field -> participants.contains(field.projectSourceId()))
+              .toList();
+      if (fields.isEmpty()) {
+        continue;
+      }
+      var rule = entry.getKey();
+      var open = rule.open();
+      URI address = open.type() == OpenType.LINK ? shareableLink(item, open) : null;
+      var key =
+          new VisitKey(
+              rule.access(),
+              open.target(),
+              rule.returnRule(),
+              address,
+              address == null ? open : null);
+      visits
+          .computeIfAbsent(key, ignored -> new DetailVisit(rule, new ArrayList<>()))
+          .fields()
+          .addAll(fields);
+    }
+    return List.copyOf(visits.values());
+  }
+
+  private static URI shareableLink(HtmlScope item, DetailOpen open) {
+    try {
+      String link = item.uniqueLink(open.selector(), open.urlAttribute());
+      return link == null ? null : SiteAccess.normalizeAddress(link);
+    } catch (IllegalArgumentException | IllegalStateException | SiteAccessException error) {
+      // A rule that cannot be grouped is validated on its own under the detail navigation guard.
+      return null;
+    }
+  }
+
+  record DetailVisit(DetailNavigation rule, List<Field> fields) {}
+
+  private record VisitKey(
+      DetailAccess access, Target target, DetailReturn returnRule, URI link, DetailOpen action) {}
+
+  List<FieldFailure> extract(
+      List<Field> fields,
+      HtmlScope scope,
+      WorkBudget budget,
+      Map<String, Map<String, Object>> values) {
+    var failures = new ArrayList<FieldFailure>();
     for (Field field : fields) {
+      var target = values.get(field.projectSourceId());
+      if (target == null) {
+        continue;
+      }
       budget.check();
       var connector = field.connector();
       FieldExtractor.Result extraction;
@@ -79,17 +143,24 @@ final class FixedCollectionFields {
               case PARSER, PARSER_INPUT -> "PARSER_FAILED";
               case TYPE_CONVERSION -> "TYPE_CONVERSION_FAILED";
             };
-        throw new InvalidField(
-            field.projectSourceId(),
-            new MessageError(
-                code,
-                "CRAWLER_EXTRACTION",
-                "필드 추출 결과를 검증하지 못했습니다.",
-                Map.of("field_id", connector.fieldId(), "reason", result.failure().reason()),
-                false,
-                null));
+        values.remove(field.projectSourceId());
+        failures.add(
+            new FieldFailure(
+                field.projectSourceId(),
+                connector.fieldId(),
+                extraction.rawValues(),
+                new MessageError(
+                    code,
+                    "CRAWLER_EXTRACTION",
+                    "필드 추출 결과를 검증하지 못했습니다.",
+                    Map.of("field_id", connector.fieldId(), "reason", result.failure().reason()),
+                    false,
+                    null)));
+        continue;
       }
+      target.put(connector.fieldId(), result.value());
     }
+    return failures;
   }
 
   static List<CollectionSnapshot.Consumer> consumers(List<Field> fields) {
@@ -106,22 +177,6 @@ final class FixedCollectionFields {
 
   record Field(String projectSourceId, FieldConnector connector, Type type, boolean nullable) {}
 
-  static final class InvalidField extends RuntimeException {
-    private final String projectSourceId;
-    private final MessageError error;
-
-    InvalidField(String projectSourceId, MessageError error) {
-      super(error.message());
-      this.projectSourceId = projectSourceId;
-      this.error = error;
-    }
-
-    String projectSourceId() {
-      return projectSourceId;
-    }
-
-    MessageError error() {
-      return error;
-    }
-  }
+  record FieldFailure(
+      String projectSourceId, String fieldId, List<String> rawValues, MessageError error) {}
 }

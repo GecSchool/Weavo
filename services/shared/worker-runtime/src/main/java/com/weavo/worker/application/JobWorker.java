@@ -136,7 +136,12 @@ public final class JobWorker<P> implements AutoCloseable {
       throws InterruptedException {
     var attempt =
         new AttemptContext(
-            clock, attemptId, job.workBudget(), timing.completionGrace(), initialLease);
+            clock,
+            attemptId,
+            job.workBudget(),
+            timing.completionGrace(),
+            initialLease,
+            (owner, body) -> withTransportRetry(owner, () -> transport.publish(body)));
     active = attempt;
     try {
       if (closed) {
