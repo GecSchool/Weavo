@@ -1,6 +1,9 @@
 package com.weavo.crawler.collection.application;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.FailureEvidence;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.ObjectReference;
 import com.weavo.siteaccess.SiteAccess.PageSnapshot;
 import com.weavo.siteaccess.rule.Navigation;
@@ -10,6 +13,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -67,10 +71,21 @@ final class CollectionSnapshot implements AutoCloseable {
     return new Detail(page.url().toString(), ref, List.copyOf(consumers));
   }
 
-  void addItem(int itemIndex, List<SourceUrl> sourceUrls, List<Detail> details) {
+  void addItem(
+      int itemIndex,
+      List<SourceUrl> sourceUrls,
+      List<Detail> details,
+      List<String> failedParticipants) {
     String key = list.snapshotId() + String.format(Locale.ROOT, ":item-%04d", itemIndex);
     list.items()
-        .add(new Item(key, itemIndex, itemCount++, List.copyOf(sourceUrls), List.copyOf(details)));
+        .add(
+            new Item(
+                key,
+                itemIndex,
+                itemCount++,
+                List.copyOf(sourceUrls),
+                List.copyOf(details),
+                List.copyOf(failedParticipants)));
   }
 
   int itemCount() {
@@ -108,6 +123,47 @@ final class CollectionSnapshot implements AutoCloseable {
     return ref;
   }
 
+  FailureEvidence storeFailure(
+      CollectionProject project,
+      String fieldId,
+      List<String> rawValues,
+      FixedCollection.SnapshotUpload store)
+      throws InterruptedException {
+    var observedAt = attempt.now();
+    var ref =
+        new ObjectReference(
+            bucket,
+            "failures/CRAWLER/%s/%s/%s/%s/0.json"
+                .formatted(jobId, attempt.id(), project.projectSourceId(), fieldId));
+    var body =
+        new FieldFailureSidecar(
+            1,
+            "CRAWLER",
+            jobId.toString(),
+            attempt.id().toString(),
+            project.projectId(),
+            project.projectSourceId(),
+            fieldId,
+            0,
+            observedAt.toString(),
+            rawValues);
+    put(store, ref, "application/json", JSON.writeValueAsBytes(body));
+    return new FailureEvidence(
+        project.projectSourceId(), fieldId, ref, observedAt.plus(Duration.ofDays(7)).toString());
+  }
+
+  private record FieldFailureSidecar(
+      int formatVersion,
+      String reportingService,
+      String jobId,
+      String attemptId,
+      String projectId,
+      String projectSourceId,
+      String fieldId,
+      int failureIndex,
+      String observedAt,
+      List<String> rawValues) {}
+
   private static void validateParticipants(List<ListSnapshot> pages, Set<String> allowed) {
     for (var page : pages) {
       for (var item : page.items()) {
@@ -116,6 +172,12 @@ final class CollectionSnapshot implements AutoCloseable {
           if (!allowed.contains(source.projectSourceId())
               || !participants.add(source.projectSourceId())) {
             throw new IllegalStateException("Invalid snapshot item participant");
+          }
+        }
+        var failed = new HashSet<String>();
+        for (var id : item.failedProjectSourceIds()) {
+          if (!participants.contains(id) || !failed.add(id)) {
+            throw new IllegalStateException("Invalid failed snapshot item participant");
           }
         }
         for (var detail : item.details()) {
@@ -216,7 +278,8 @@ final class CollectionSnapshot implements AutoCloseable {
       int itemIndex,
       int sequenceIndex,
       List<SourceUrl> sourceUrls,
-      List<Detail> details) {}
+      List<Detail> details,
+      @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> failedProjectSourceIds) {}
 
   record SourceUrl(String projectSourceId, String sourceUrl) {}
 
