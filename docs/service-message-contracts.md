@@ -569,6 +569,7 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
   "revision": 1,
   "status": "SUCCEEDED",
   "schema_change_required": false,
+  "recommendation_sample_count": 1,
   "candidate": {
     "schema": {
       "fields": [
@@ -650,6 +651,8 @@ DB 0건이면 latest_records는 []이고 approved_sample_ref에 승인된 S3 샘
   "error": null
 }
 ```
+
+`recommendation_sample_count`는 공동 추천에 실제 전달한 정상 레코드 수이며 승인용 최종 검증 샘플의 개수와 구분한다. INITIAL·RETRY_SOURCE의 채택 가능한 추천 결과에 0~50을 포함한다. 공동 추천을 하지 않은 REVALIDATE 등과 채택 가능한 추천 결과가 없으면 null이다. 이전 메시지에 필드가 없으면 미확정으로 처리한다. Control은 현재 후보에 유효한 추천 결과를 채택할 때 후보와 함께 이 값을 저장하고, 재검증만 하는 경우 기존 값을 승계한다. 분석 조회에서 이 값을 반환하며 값이 있는 경우 10건 미만이면 표본 부족을 표시한다.
 
 AI 추천 필드는 근거 문자열 recommendation_reason을 필수로 담아 Control 분석 조회가 사용자에게 제공한다. 사용자가 직접 추가한 필드는 recommendation_reason=null을 허용하며 화면에 추천 근거 없음으로 표시한다. status는 SUCCEEDED, PARTIAL, FAILED, SKIPPED다. 최초 분석 또는 출처 재시도에서 성공한 출처는 `source_results[].intermediate_ref`로 채택된 중간 JSON의 실제 참조를 전달한다. 다른 목적이거나 중간 결과가 없는 출처는 이 값을 null로 둔다. Control은 반환 revision이 현재 후보에 유효할 때만 출처별 참조를 저장하고 RETRY_SOURCE에 기존 유효 참조를 전달한다. 출처별 sample_ref가 가리키는 샘플 본문은 [S3 저장 명세](s3-storage-contract.md) 3절의 revision·프로젝트·출처별 JSON이다. Control은 성공적으로 저장된 실제 sample_ref와 sample_revision을 유효한 현재 검증에 연결하며 사용자 승인 후에는 그 참조를 복구 기준으로 보관한다. 실패 검증도 샘플 저장에 성공했다면 실패 결과의 sample_ref를 읽어 match_count와 7일 만료되는 failure_raw_ref를 확인할 수 있다. 재검증이 불필요한 후보 수정의 승계는 11절을 따른다. 초기 일부 출처 실패는 PARTIAL과 source_results에 남기고 성공 출처의 후보를 제공한다. validation_status는 PASSED, FAILED, UNVERIFIABLE이다. 스키마 변경이 필요한 복구는 schema_change_required=true로 반환하고 자동 승인하지 않는다. 샘플 저장 실패면 PASSED로 반환하지 않는다. 목록의 정적 수집 가능 여부만 list_access에 반영하고 상세는 항상 브라우저로 수집한다. 별도의 HTTP 검사 화면은 없다.
 
@@ -1920,6 +1923,7 @@ HTTP 200 응답:
   "revision": 2,
   "status": "FAILED",
   "schema_change_required": false,
+  "recommendation_sample_count": null,
   "candidate": null,
   "source_results": [
     {
@@ -2316,7 +2320,7 @@ Ingestion은 프로젝트·변경 행과 pending 대상을 잠그고 OPEN·대�
 
 ### 19.9 후보·작업 HTTP 본문
 
-분석 조회는 200 `{ "analysis_id":"<uuid>", "status":"READY", "candidate_revision":2, "validation_status":"PASSED", "candidate":{"fields":[{"field_id":"<uuid>","api_name":"title","display_name":"제목","description":null,"display_order":0,"type":"string","nullable":true,"recommendation_reason":"목록 항목의 제목을 나타냅니다"}],"source_rules":[{"project_source_id":"<uuid>","connector_revision":1,"navigation":{"list_url":"https://example.com/list","initial_actions":[],"list_access":{"method":"HTTP","wait_selector":null},"item_selector":".item","pagination":{"type":"NONE"}},"field_connectors":[]}],"excluded_project_source_ids":[]}, "sources":[{"project_source_id":"<uuid>","status":"SUCCEEDED","validation_revision":2,"sample_revision":2,"samples":[],"error":null}] }` 형식이다. 모든 출처 규칙·커넥터 및 제외 목록을 반환한다. 내부 candidate.schema.fields는 fields, source_configs는 source_rules로 변환한다. validation_revision과 sample_revision은 없으면 null이다. 샘플에는 S3의 현재 유효 revision 내용이 들어가며 S3 조회 실패를 빈 샘플로 바꾸지 않고 503으로 반환한다. 해당 없는 candidate·validation_status는 null이다.
+분석 조회는 200 `{ "analysis_id":"<uuid>", "status":"READY", "candidate_revision":2, "validation_status":"PASSED", "recommendation_sample_count":1, "candidate":{"fields":[{"field_id":"<uuid>","api_name":"title","display_name":"제목","description":null,"display_order":0,"type":"string","nullable":true,"recommendation_reason":"목록 항목의 제목을 나타냅니다"}],"source_rules":[{"project_source_id":"<uuid>","connector_revision":1,"navigation":{"list_url":"https://example.com/list","initial_actions":[],"list_access":{"method":"HTTP","wait_selector":null},"item_selector":".item","pagination":{"type":"NONE"}},"field_connectors":[]}],"excluded_project_source_ids":[]}, "sources":[{"project_source_id":"<uuid>","status":"SUCCEEDED","validation_revision":2,"sample_revision":2,"samples":[],"error":null}] }` 형식이다. 모든 출처 규칙·커넥터 및 제외 목록을 반환한다. 내부 candidate.schema.fields는 fields, source_configs는 source_rules로 변환한다. validation_revision과 sample_revision은 없으면 null이다. 샘플에는 S3의 현재 유효 revision 내용이 들어가며 S3 조회 실패를 빈 샘플로 바꾸지 않고 503으로 반환한다. 해당 없는 candidate·validation_status는 null이다.
 
 PATCH는 `{ "expected_revision":2, "fields":[{"field_id":"<uuid>","display_name":"새 제목"}], "source_rules":[{"project_source_id":"<uuid>","field_connectors":[{"field_id":"<uuid>","location":"LIST","selector":".title","extract":{"type":"TEXT","attribute":null},"parser":null,"detail_navigation":null}]}], "delete_field_ids":[], "excluded_project_source_ids":[] }`와 같다. fields는 field_id, source_rules는 project_source_id, field_connectors는 field_id로 부분 병합한다. 새 필드는 클라이언트가 UUIDv4를 만들어 field_id와 완전한 필수 정의를 전달한다. 삭제는 delete_field_ids를 쓰고 제외 배열은 전달 시 전체 교체다. 생략은 유지한다. 명시적 null 허용 여부는 스키마 필드값의 nullable과 무관하게 해당 DTO 속성 규칙으로 검사한다. location을 LIST 또는 ABSENT로 바꿀 때 detail_navigation=null을 보내 이전 상세 규칙을 제거할 수 있고 DETAIL에서는 유효한 detail_navigation이 필수다. 성공은 202 `{ "analysis_id":"<uuid>","candidate_revision":3,"validation_status":"PENDING" }`, 검증 승계는 200과 PASSED다. 여기의 PENDING은 HTTP 후보 검증 진행 상태이며 Analysis 완료 이벤트의 validation_status(PASSED·FAILED·UNVERIFIABLE)와 구분한다. 경합은 409 `{ "code":"REVISION_CONFLICT","current_revision":3 }`, 유효하지 않은 입력은 422 `{ "code":"INVALID_CANDIDATE","errors":[{"path":"source_rules[0].field_connectors[0].selector","message":"선택자를 확인하세요"}] }`, 의존 저장소 장애는 503이다. 실패 출처 재시도는 당시 revision의 대상 출처 매핑·샘플만 반영하고 사용자 편집과 다른 출처를 보존한다. 공통 스키마 변경은 별도 후보 수정과 영향 출처 재검증을 거친다.
 

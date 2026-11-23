@@ -1397,7 +1397,7 @@
     "/control/v1/projects/{p}/analyses/{a}": {
       "get": {
         "summary": "GET /control/v1/projects/{p}/analyses/{a}",
-        "description": "처리: 진행 상태·후보 revision·필드·출처별 규칙·검증 결과·샘플\nstatus는 RUNNING/READY/FAILED/CANCELLED. validation/sample_revision은 없으면 null, S3 조회 실패는 503.\n후보·출처별 규칙·샘플·검증 상태를 반환한다. 해당하지 않는 candidate와 validation_status, 없는 validation_revision·sample_revision은 null이다. S3 샘플 조회 실패는 503이다.\n승인 검토용 샘플은 S3 참조를 제거한 사용자용 fields 투영이며 실패 원문은 만료 전 확보한 경우 표시한다.",
+        "description": "처리: 진행 상태·후보 revision·필드·출처별 규칙·검증 결과·샘플\nstatus는 RUNNING/READY/FAILED/CANCELLED. validation/sample_revision은 없으면 null, S3 조회 실패는 503.\n후보·출처별 규칙·샘플·검증 상태를 반환한다. 해당하지 않는 candidate와 validation_status, 없는 validation_revision·sample_revision은 null이다. S3 샘플 조회 실패는 503이다.\n승인 검토용 샘플은 S3 참조를 제거한 사용자용 fields 투영이며 실패 원문은 만료 전 확보한 경우 표시한다.\nrecommendation_sample_count는 현재 후보의 공동 추천에 실제 사용한 정상 레코드 수다. 미확정이면 null이며 10건 미만이면 표본 부족을 표시한다.",
         "responses": {
           "200": {
             "description": "성공.",
@@ -1703,6 +1703,15 @@
                           }
                         }
                       }
+                    },
+                    "recommendation_sample_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 50,
+                      "description": "현재 후보와 연결된 공동 추천의 정상 표본 수. 승인 화면에서 조회한 샘플 수와는 별개."
                     }
                   }
                 }

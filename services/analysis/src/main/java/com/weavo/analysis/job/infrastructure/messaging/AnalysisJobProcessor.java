@@ -31,7 +31,7 @@ public final class AnalysisJobProcessor implements JobProcessor<AnalysisExecute>
   @Override
   public Result execute(Job<AnalysisExecute> job, AttemptContext attempt)
       throws InterruptedException {
-    var payload = handlers.execute(job.payload(), attempt);
+    var payload = handlers.execute(job.id().toString(), job.payload(), attempt);
     var event =
         new EventEnvelope<>(
             1,

@@ -95,6 +95,7 @@ public final class Messages {
       String status,
       Boolean schemaChangeRequired,
       Candidate candidate,
+      Integer recommendationSampleCount,
       List<AnalysisSourceResult> sourceResults,
       MessageError error) {}
 

@@ -83,7 +83,7 @@ Analysis는 생성 후보에 코드가 있으면 7.1의 격리 파서 실행으�
 | 9 | Analysis ↔ S3·LLM / 객체 조회·외부 API | 출처별 중간 결과 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 공통 스키마 추천. Control에 별도 공동 추천 요청을 요구하지 않음 |
 | 10 | Analysis ↔ 사이트 / 브라우저·HTTP 검증 | 공통 후보와 출처별 규칙 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 실제 목록·상세 이동·추출 검증과 목록 HTTP 가능 여부 내부 확인. 상세는 브라우저 고정 |
 | 11 | Analysis → S3 / 객체 저장 | analysis_id·revision·출처별 검증 샘플 | 1.3, 6.1, 6.2 — 참조·후보 형식; S3 저장 명세 2~3절 — 객체 형식·정리 조건 | 저장 성공 후에만 승인 가능한 성공 결과 생성 |
-| 12 | Analysis → Control / SQS analysis.completed | revision, candidate, source_results, sample_ref, intermediate_ref | 6.2, 16.2 — 메시지 형식 | 현재 분석·revision 대조 후 후보·출처별 intermediate_ref·sample_ref와 상태 저장 |
+| 12 | Analysis → Control / SQS analysis.completed | revision, candidate, recommendation_sample_count, source_results, sample_ref, intermediate_ref | 6.2, 16.2 — 메시지 형식 | 현재 분석·revision 대조 후 후보·추천 표본 수·출처별 참조와 상태 저장 |
 | 13 | 웹 ↔ Control / HTTP GET /control/v1/projects/{p}/analyses/{a} | analysis_id | 12.2, 15.1 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 진행 상태·후보·출처별 오류 조회 |
 | 14 | Control ↔ S3 / 객체 조회·응답 | 현재 revision의 sample_ref | 1.3, 15.1 — S3 참조·상황; S3 저장 명세 3절 — 샘플 형식; HTTP 응답은 메시지 명세 19.9 | 분석 조회 응답에 샘플 포함 |
 | 15a | Control → 웹 / HTTP 조회 응답 | status=READY (전체 또는 일부 성공); 출처별 status로 구분 | 12.2, 15.1 — 상황만 명시; 이 MD에 전체 HTTP 형식 없음 | 성공 출처 후보와 실패 출처를 함께 표시. 수정·승인 또는 15.2 연결 |

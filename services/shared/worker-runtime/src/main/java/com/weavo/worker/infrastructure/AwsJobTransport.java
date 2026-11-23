@@ -134,6 +134,10 @@ public final class AwsJobTransport implements AutoCloseable {
     }
   }
 
+  public byte[] readObject(String key) {
+    return s3.getObjectAsBytes(request -> request.bucket(bucket).key(key)).asByteArray();
+  }
+
   public void publish(String json) {
     sqs.sendMessage(request -> request.queueUrl(resultQueue).messageBody(json));
   }

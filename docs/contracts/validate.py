@@ -160,6 +160,17 @@ def main():
     case["source_results"][0]["intermediate_ref"] = None
     expect_rejected(analysis_result, case, "INITIAL success without intermediate reference")
 
+    source_analysis_result = read(ROOT / "examples/messages/analysis.completed.json")
+    case = copy.deepcopy(source_analysis_result)
+    case.pop("recommendation_sample_count")
+    validate_instance(analysis_result, case, "legacy analysis result without recommendation count")
+    case = copy.deepcopy(source_analysis_result)
+    case["recommendation_sample_count"] = 51
+    expect_rejected(analysis_result, case, "recommendation count exceeds 50")
+    case = copy.deepcopy(source_analysis_result)
+    case["purpose"] = "REVALIDATE"
+    expect_rejected(analysis_result, case, "revalidation cannot set a recommendation count")
+
     collect = SCHEMAS / "messages/collection.execute.schema.json"
     source_collect = read(ROOT / "examples/messages/collection.execute.json")
     case = copy.deepcopy(source_collect)

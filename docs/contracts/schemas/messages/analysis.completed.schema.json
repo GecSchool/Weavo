@@ -71,6 +71,15 @@
           "type": "null"
         }
       ]
+    },
+    "recommendation_sample_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 50,
+      "description": "공동 추천에서 실제로 사용한 정상 레코드 수. 추천 결과가 없거나 공동 추천을 실행하지 않았으면 null."
     }
   },
   "required": [
@@ -150,6 +159,34 @@
                 }
               ]
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recommendation_sample_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "recommendation_sample_count"
+        ]
+      },
+      "then": {
+        "properties": {
+          "purpose": {
+            "enum": [
+              "INITIAL",
+              "RETRY_SOURCE"
+            ]
+          },
+          "status": {
+            "enum": [
+              "SUCCEEDED",
+              "PARTIAL"
+            ]
           }
         }
       }

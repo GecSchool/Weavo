@@ -22,11 +22,23 @@ public final class SourceDiscovery {
 
   public SourceAnalyzer.Result analyze(String url, String purpose, AttemptContext attempt)
       throws InterruptedException {
-    var budget =
-        new WorkBudget(
-            attempt.workDeadline(), attempt::isCancellationRequested, attempt::requireWorkAllowed);
+    var budget = budget(attempt);
+    return analyzer(budget).analyze(url, purpose, budget);
+  }
+
+  public SourceAnalyzer.Verification verify(SourceCandidate candidate, AttemptContext attempt) {
+    var budget = budget(attempt);
+    return analyzer(budget).verify(candidate, budget);
+  }
+
+  private SourceAnalyzer analyzer(WorkBudget budget) {
     var fields = new FieldValueProcessor((code, values) -> parser.parse(code, values, budget));
-    return new SourceAnalyzer(sites, fields, generator).analyze(url, purpose, budget);
+    return new SourceAnalyzer(sites, fields, generator);
+  }
+
+  private static WorkBudget budget(AttemptContext attempt) {
+    return new WorkBudget(
+        attempt.workDeadline(), attempt::isCancellationRequested, attempt::requireWorkAllowed);
   }
 
   @FunctionalInterface

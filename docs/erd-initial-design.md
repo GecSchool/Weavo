@@ -170,6 +170,7 @@ erDiagram
         string mode
         int current_revision
         string candidate_settings "nullable"
+        int recommendation_sample_count "nullable; 현재 공동 추천에 실제 사용한 정상 레코드 수"
         string status
     }
     SOURCE_VALIDATION {

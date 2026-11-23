@@ -1,7 +1,9 @@
 package com.weavo.analysis;
 
+import com.weavo.analysis.joint.application.JointRecommender;
 import com.weavo.analysis.source.application.SourceDiscovery;
 import com.weavo.analysis.source.infrastructure.http.OpenAiCandidateGenerator;
+import com.weavo.analysis.source.infrastructure.http.OpenAiJointRecommender;
 import com.weavo.extraction.infrastructure.IsolatedParserClient;
 import com.weavo.siteaccess.SiteAccess;
 import java.net.URI;
@@ -12,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("worker")
+@Profile("worker & !worker-test")
 @ConditionalOnProperty(name = "check", havingValue = "false", matchIfMissing = true)
 class SourceDiscoveryConfiguration {
   @Bean
@@ -29,5 +31,13 @@ class SourceDiscoveryConfiguration {
         generator,
         (code, values, budget) ->
             parser.parse(code, values, budget::beforeRequest, budget::remainingWhileWaiting));
+  }
+
+  @Bean
+  JointRecommender jointRecommender(
+      @Value("${OPENAI_API_KEY:}") String apiKey,
+      @Value("${WEAVO_ANALYSIS_MODEL:" + OpenAiCandidateGenerator.DEFAULT_MODEL + "}")
+          String model) {
+    return new OpenAiJointRecommender(apiKey, model);
   }
 }
