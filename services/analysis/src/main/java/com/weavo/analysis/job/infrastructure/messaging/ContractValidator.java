@@ -212,7 +212,18 @@ public final class ContractValidator {
         path + ".project_id",
         purpose.equals("REPAIR_NAVIGATION"));
     positive(member(payload, "revision", path, false), path + ".revision", false);
-    choice(member(payload, "status", path, false), path + ".status", ANALYSIS_STATUSES);
+    String status =
+        choice(member(payload, "status", path, false), path + ".status", ANALYSIS_STATUSES);
+    JsonNode sampleCount = payload.get("recommendation_sample_count");
+    String sampleCountPath = path + ".recommendation_sample_count";
+    nonnegative(sampleCount, sampleCountPath, true);
+    if (sampleCount != null
+        && !sampleCount.isNull()
+        && (sampleCount.longValue() > 50
+            || !Set.of("INITIAL", "RETRY_SOURCE").contains(purpose)
+            || !Set.of("SUCCEEDED", "PARTIAL").contains(status))) {
+      invalid(sampleCountPath);
+    }
     bool(member(payload, "schema_change_required", path, false), path + ".schema_change_required");
     JsonNode candidate = member(payload, "candidate", path, true);
     if (!candidate.isNull()) {

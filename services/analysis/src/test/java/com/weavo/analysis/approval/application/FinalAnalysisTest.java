@@ -63,7 +63,7 @@ class FinalAnalysisTest {
       throws Exception {
     var storage = new LinkedHashMap<String, byte[]>();
     var artifacts = artifacts(storage);
-    var analysis = initialAnalysis(artifacts, records);
+    var analysis = initialAnalysis(artifacts, records, 3);
     String participant = id();
     var request =
         new AnalysisExecute(
@@ -91,13 +91,14 @@ class FinalAnalysisTest {
                 attempt());
     var payload = JsonMapper.shared().readTree(event.body()).path("payload");
     assertThat(payload.path("status").asText()).isEqualTo("SUCCEEDED");
+    assertThat(payload.path("recommendation_sample_count").asInt()).isEqualTo(records);
     assertThat(payload.at("/candidate/source_configs/0/navigation/list_access/method").asText())
         .isEqualTo("HTTP");
     var key = payload.at("/source_results/0/sample_ref/key").asText();
     assertThat(key).contains("/revisions/3/" + participant + "/");
     var sample = JsonMapper.shared().readTree(storage.get(key));
     assertThat(sample.path("revision").asLong()).isEqualTo(3);
-    assertThat(sample.path("samples")).hasSize(records);
+    assertThat(sample.path("samples")).hasSize(3);
     assertThat(
             JsonMapper.shared()
                 .readTree(
@@ -198,6 +199,7 @@ class FinalAnalysisTest {
                     nav(Navigation.AccessMethod.HTTP), List.of(sample(candidate)), null),
             artifacts(storage));
     var output = analysis.execute(id(), request(8L), attempt());
+    assertThat(output.recommendationSampleCount()).isNull();
     var reference = output.sourceResults().getFirst().sampleRef();
     assertThat(reference.key()).contains("/revisions/8/").doesNotContain("/revisions/7/");
     assertThat(JsonMapper.shared().readTree(storage.get(reference.key())).path("revision").asLong())
@@ -231,7 +233,7 @@ class FinalAnalysisTest {
               Duration.ofSeconds(8))) {
         var artifacts =
             new AnalysisArtifacts(bucket, transport::readObject, transport::storeObject);
-        var analysis = initialAnalysis(artifacts, 1);
+        var analysis = initialAnalysis(artifacts, 1, 1);
         var contract = new ContractJson();
         var processor =
             new AnalysisJobProcessor(
@@ -302,7 +304,8 @@ class FinalAnalysisTest {
     }
   }
 
-  private static FinalAnalysis initialAnalysis(AnalysisArtifacts artifacts, int records) {
+  private static FinalAnalysis initialAnalysis(
+      AnalysisArtifacts artifacts, int recommendationRecords, int verificationRecords) {
     var discovery =
         new SourceCandidate(
             nav(Navigation.AccessMethod.BROWSER),
@@ -312,7 +315,12 @@ class FinalAnalysisTest {
     var joint =
         new JointAnalysis(
             (url, purpose, attempt) ->
-                new SourceAnalyzer.Result(discovery, List.of(Map.of("local-key", "item")), null),
+                new SourceAnalyzer.Result(
+                    discovery,
+                    java.util.stream.IntStream.range(0, recommendationRecords)
+                        .mapToObj(i -> Map.<String, Object>of("local-key", "item " + i))
+                        .toList(),
+                    null),
             artifacts,
             (input, budget) ->
                 List.of(
@@ -333,7 +341,7 @@ class FinalAnalysisTest {
             (candidate, attempt) ->
                 new SourceAnalyzer.Verification(
                     nav(Navigation.AccessMethod.HTTP),
-                    java.util.stream.IntStream.range(0, records)
+                    java.util.stream.IntStream.range(0, verificationRecords)
                         .mapToObj(i ->
                             new SourceAnalyzer.Sample(
                                 URL + "/" + i,

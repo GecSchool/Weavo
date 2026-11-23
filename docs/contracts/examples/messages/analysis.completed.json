@@ -6,6 +6,7 @@
   "revision": 1,
   "status": "SUCCEEDED",
   "schema_change_required": false,
+  "recommendation_sample_count": 1,
   "candidate": {
     "schema": {
       "fields": [

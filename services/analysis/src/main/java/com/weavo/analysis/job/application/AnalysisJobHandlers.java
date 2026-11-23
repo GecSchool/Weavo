@@ -57,6 +57,7 @@ public final class AnalysisJobHandlers {
         "FAILED",
         false,
         null,
+        null,
         sourceResults,
         error);
   }

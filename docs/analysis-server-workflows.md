@@ -107,7 +107,7 @@ Analysis는 Control의 job_id에 대해 attempt_id로 선점하고 lease를 갱�
 
 ## 8. 서비스 연결 계약
 
-- 공동 후보의 필드별 recommendation_reason을 analysis.completed에 포함한다. 웹에는 Control이 현재 후보·S3 샘플을 반환한다. Analysis가 Control의 후보를 직접 덮어쓰지 않는다.
+- 공동 후보의 필드별 recommendation_reason과 공동 추천에 실제 사용한 recommendation_sample_count를 analysis.completed에 포함한다. Control은 현재 후보·표본 수·S3 샘플을 조회 응답으로 반환한다. 10건 미만이면 표본 부족을 표시한다. Analysis가 Control의 후보를 직접 덮어쓰지 않는다.
 - 상세 후보는 첫 목록에서 최대 3개를 브라우저로 검증한다. Analysis는 후보 검증에, Crawler는 최초·리비전 수집의 목록·상세 필드 검증과 증분 수집의 최신값 비교에, Ingestion은 최종 적재에 격리 파서 실행기를 사용한다. 각 서비스는 가공 코드가 있는 필드만 실행기에 보내고 같은 타입 변환 규칙을 적용한다.
 - 최초를 포함해 복구 후보를 최대 3회 검증하고 DB 최신값 또는 승인 샘플 기준이 부족하거나 모두 일치하지 않으면 사용자 확인으로 전환한다. 공유 규칙은 모든 영향 프로젝트 통과가 필요하다.
 

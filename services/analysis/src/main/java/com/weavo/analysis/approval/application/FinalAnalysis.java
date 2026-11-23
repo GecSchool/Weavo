@@ -46,6 +46,7 @@ public final class FinalAnalysis {
           attempt,
           "FAILED",
           null,
+          null,
           List.of(),
           new MessageError(
               "TECHNICAL_FAILURE",
@@ -56,12 +57,14 @@ public final class FinalAnalysis {
               null));
     }
     final Candidate candidate;
+    Integer recommendationSampleCount = null;
     Map<String, ObjectReference> refs = Map.of();
     Map<String, AnalysisSourceResult> results = new LinkedHashMap<>();
     try {
       if (jointRequest) {
         var proposal = joint.prepare(jobId, request, attempt);
         candidate = proposal.candidate();
+        recommendationSampleCount = proposal.normalSampleCount();
         refs = proposal.intermediates();
         proposal
             .failures()
@@ -81,7 +84,7 @@ public final class FinalAnalysis {
     }
     if (candidate == null) {
       return completed(
-          request, attempt, "FAILED", null, ordered(request, results), firstError(results));
+          request, attempt, "FAILED", null, null, ordered(request, results), firstError(results));
     }
 
     var configs = new ArrayList<SourceConfig>();
@@ -92,10 +95,6 @@ public final class FinalAnalysis {
         return technical(request, attempt, "CANDIDATE", "DUPLICATE_VALIDATION_SOURCE");
       }
       requestedUrls.put(requested.projectSourceId(), requested.url());
-    }
-    if ("RETRY_SOURCE".equals(request.purpose())
-        && !candidate.schema().equals(request.currentCandidate().schema())) {
-      candidate.sourceConfigs().forEach(config -> targets.add(config.projectSourceId()));
     }
     var excluded = Set.copyOf(candidate.excludedProjectSourceIds());
     for (SourceConfig config : candidate.sourceConfigs()) {
@@ -178,6 +177,7 @@ public final class FinalAnalysis {
           attempt,
           "FAILED",
           "INITIAL".equals(request.purpose()) ? null : verified,
+          null,
           ordered(request, results),
           firstError(results));
     }
@@ -187,6 +187,7 @@ public final class FinalAnalysis {
         attempt,
         partial ? "PARTIAL" : "SUCCEEDED",
         verified,
+        recommendationSampleCount,
         ordered(request, results),
         null);
   }
@@ -270,7 +271,7 @@ public final class FinalAnalysis {
     var error =
         new MessageError(
             "TECHNICAL_FAILURE", stage, "분석을 완료할 수 없습니다.", Map.of("reason", reason), null, null);
-    return completed(request, attempt, "FAILED", null, List.of(), error);
+    return completed(request, attempt, "FAILED", null, null, List.of(), error);
   }
 
   private static AnalysisCompleted completed(
@@ -278,6 +279,7 @@ public final class FinalAnalysis {
       AttemptContext attempt,
       String status,
       Candidate candidate,
+      Integer recommendationSampleCount,
       List<AnalysisSourceResult> results,
       MessageError error) {
     return new AnalysisCompleted(
@@ -289,6 +291,7 @@ public final class FinalAnalysis {
         status,
         false,
         candidate,
+        recommendationSampleCount,
         results,
         error);
   }

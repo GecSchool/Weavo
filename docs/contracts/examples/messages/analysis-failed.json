@@ -6,6 +6,7 @@
   "revision": 2,
   "status": "FAILED",
   "schema_change_required": false,
+  "recommendation_sample_count": null,
   "candidate": null,
   "source_results": [
     {

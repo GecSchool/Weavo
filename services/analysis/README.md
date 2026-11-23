@@ -79,6 +79,14 @@ Bearer 토큰을 설정합니다. 서비스에서 생성된 Java 코드는 해�
 '*SourceAnalysisBrowserSmokeTest.terraProposalCollectsTheDetailBodyWithTheActualBrowser'`를
 실행합니다. 분석에는 테스트용 로컬 사이트의 목록과 상세만 사용합니다.
 
+출처별 분석부터 공동 추천과 승인 샘플의 실제 값까지 확인하려면 위 키·파서 환경에
+LocalStack S3 환경을 더해 아래 단일 테스트를 실행합니다. 이 테스트는 두 로컬 출처의
+목록·상세에서 알려진 값을 골랐는지와 revision별 S3 샘플을 확인합니다.
+
+```sh
+WEAVO_ANALYSIS_TEST_AWS=http://127.0.0.1:4566 WEAVO_RUN_OPENAI_SMOKE=1 ./gradlew browserSmokeTest --tests '*AnalysisPipelineBrowserSmokeTest.terraDiscoversAndCombinesTwoSourcesAndPersistsExactApprovalValues'
+```
+
 ## 공동 추천과 승인 샘플
 
 `worker` 프로필은 `INITIAL`, `RETRY_SOURCE`와 `REVALIDATE`를 처리합니다.
