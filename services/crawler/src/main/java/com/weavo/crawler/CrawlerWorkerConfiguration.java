@@ -81,7 +81,8 @@ class CrawlerWorkerConfiguration {
             sites,
             budget ->
                 new FieldValueProcessor((code, values) ->
-                    parser.parse(code, values, budget::beforeRequest, budget::remaining)),
+                    parser.parse(
+                        code, values, budget::beforeRequest, budget::remainingWhileWaiting)),
             settings.bucketName(),
             transport::storeObject));
   }

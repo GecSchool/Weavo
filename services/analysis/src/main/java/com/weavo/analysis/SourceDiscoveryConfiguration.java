@@ -28,6 +28,6 @@ class SourceDiscoveryConfiguration {
         sites,
         generator,
         (code, values, budget) ->
-            parser.parse(code, values, budget::beforeRequest, budget::remaining));
+            parser.parse(code, values, budget::beforeRequest, budget::remainingWhileWaiting));
   }
 }

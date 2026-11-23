@@ -27,6 +27,10 @@ public final class FieldValueProcessor {
     public ParserUnavailable(String reason) {
       super(reason);
     }
+
+    public ParserUnavailable(String reason, Throwable cause) {
+      super(reason, cause);
+    }
   }
 
   public Result process(

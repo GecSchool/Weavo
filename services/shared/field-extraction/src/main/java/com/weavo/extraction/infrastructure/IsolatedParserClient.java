@@ -47,7 +47,14 @@ public final class IsolatedParserClient {
       String code, List<String> values, Runnable beforeCall, Supplier<Duration> remaining) {
     String key = UUID.randomUUID().toString();
     for (int call = 0; call < 2; call++) {
-      beforeCall.run();
+      try {
+        beforeCall.run();
+      } catch (RuntimeException failure) {
+        if (call > 0 && remaining.get().isZero()) {
+          throw new ParserUnavailable("HTTP_UNAVAILABLE", failure);
+        }
+        throw failure;
+      }
       long millis = Math.min(remaining.get().toMillis(), CALL_TIMEOUT.toMillis());
       var request =
           HttpRequest.newBuilder(endpoint)
@@ -72,16 +79,15 @@ public final class IsolatedParserClient {
               .build();
       try {
         var response = send(request, remaining);
-        remaining.get();
         if (response.statusCode() == 200) {
           return result(response.body(), key);
         }
-        if (response.statusCode() != 503 || call == 1) {
+        if (response.statusCode() != 503 || call == 1 || remaining.get().isZero()) {
           throw new ParserUnavailable("HTTP_" + response.statusCode());
         }
-      } catch (ExecutionException failure) {
-        if (call == 1) {
-          throw new ParserUnavailable("HTTP_UNAVAILABLE");
+      } catch (ExecutionException | TimeoutException failure) {
+        if (call == 1 || remaining.get().isZero()) {
+          throw new ParserUnavailable("HTTP_UNAVAILABLE", failure);
         }
       }
     }
@@ -89,16 +95,27 @@ public final class IsolatedParserClient {
   }
 
   private HttpResponse<String> send(HttpRequest request, Supplier<Duration> remaining)
-      throws ExecutionException {
+      throws ExecutionException, TimeoutException {
+    long deadline = System.nanoTime() + request.timeout().orElseThrow().toNanos();
     var pending = http.sendAsync(request, HttpResponse.BodyHandlers.ofString());
     try {
       while (true) {
-        long wait = Math.max(1, Math.min(remaining.get().toMillis(), 100));
+        long available = Math.min(remaining.get().toNanos(), deadline - System.nanoTime());
+        if (available <= 0) {
+          throw new TimeoutException("Parser response body did not complete");
+        }
+        long wait = Math.min(available, TimeUnit.MILLISECONDS.toNanos(100));
+        HttpResponse<String> response;
         try {
-          return pending.get(wait, TimeUnit.MILLISECONDS);
+          response = pending.get(wait, TimeUnit.NANOSECONDS);
         } catch (TimeoutException ignored) {
           // The calling worker rechecks its lease and deadline during the wait.
+          continue;
         }
+        if (remaining.get().isZero() || deadline - System.nanoTime() <= 0) {
+          throw new TimeoutException("Parser response exceeded its deadline");
+        }
+        return response;
       }
     } catch (InterruptedException failure) {
       Thread.currentThread().interrupt();

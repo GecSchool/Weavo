@@ -40,9 +40,7 @@ public final class WorkBudget {
   }
 
   public void check() {
-    if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean()) {
-      throw new SiteAccessException(CANCELLED, "Site access was cancelled");
-    }
+    checkCancellation();
     if (!Instant.now().isBefore(deadline)) {
       throw new SiteAccessException(expiry, "Site access deadline expired");
     }
@@ -50,8 +48,24 @@ public final class WorkBudget {
 
   public Duration remaining() {
     check();
+    return remainingUntilDeadline();
+  }
+
+  /** Lets an in-flight operation classify expiry while still observing cancellation. */
+  public Duration remainingWhileWaiting() {
+    checkCancellation();
+    return remainingUntilDeadline();
+  }
+
+  private Duration remainingUntilDeadline() {
     Duration remaining = Duration.between(Instant.now(), deadline);
     return remaining.isNegative() ? Duration.ZERO : remaining;
+  }
+
+  private void checkCancellation() {
+    if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean()) {
+      throw new SiteAccessException(CANCELLED, "Site access was cancelled");
+    }
   }
 
   /** Checks the budget and asks the worker to confirm permission for a new request. */

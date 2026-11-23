@@ -100,13 +100,53 @@ class HttpListNavigationTest {
     }
   }
 
+  @Test
+  void classifiesStalledParserAsTechnicalFailureWhenTheJobDeadlineIsReached() throws Exception {
+    var entered = new AtomicInteger();
+    var finished = new java.util.concurrent.CountDownLatch(1);
+    var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    server.createContext(
+        "/internal/v1/parser:execute",
+        exchange -> {
+          try (exchange) {
+            entered.incrementAndGet();
+            exchange.sendResponseHeaders(200, 0);
+            exchange.getResponseBody().write('{');
+            exchange.getResponseBody().flush();
+            try {
+              finished.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+              Thread.currentThread().interrupt();
+            }
+          }
+        });
+    server.start();
+    try (var site = new TestSite(Map.of("/list", page("금액42", "")))) {
+      var parser =
+          new IsolatedParserClient(
+              URI.create("http://localhost:" + server.getAddress().getPort()), "fixture-token");
+      var ctx = attempt();
+      when(ctx.workDeadline()).thenReturn(Instant.now().plusSeconds(3));
+      var result =
+          remoteCollector(site, new HashMap<>(), parser)
+              .execute(jobWithParser(site.url("/list"), "INITIAL"), ctx);
+      assertThat(entered.get()).isPositive();
+      assertThat(result.error().stage())
+          .withFailMessage("Lost parser failure. Result was %s", result)
+          .isEqualTo("PARSER_CALL");
+    } finally {
+      finished.countDown();
+      server.stop(0);
+    }
+  }
+
   private static FixedCollection remoteCollector(
       TestSite site, Map<String, byte[]> stored, IsolatedParserClient parser) {
     return new FixedCollection(
         site.access((uri, budget) -> () -> {}),
         budget ->
             new FieldValueProcessor((code, values) ->
-                parser.parse(code, values, budget::beforeRequest, budget::remaining)),
+                parser.parse(code, values, budget::beforeRequest, budget::remainingWhileWaiting)),
         "artifacts",
         (key, type, bytes) -> stored.put(key, bytes));
   }
