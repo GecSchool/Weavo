@@ -37,7 +37,7 @@ PostgreSQL 데이터는 Docker 볼륨에 남습니다. LocalStack의 상태는 �
 - LocalStack: `http://localhost:4566` (호스트에서 실행한 프로그램 기준), 리전 `ap-northeast-2`, 버킷 `weavo-local-artifacts`.
 - SQS: `collection-schedule-requests`, `analysis-jobs`, `collection-priority-jobs`, `collection-scheduled-jobs`, `ingestion-jobs`, `control-results`. 각 큐에 대응하는 이름의 `-dlq` 큐도 생성합니다.
 
-정기 수집 신호는 Control이 수신하고, 수동·최초 요청과 정기 요청은 서로 다른 큐에서 Crawler가 수신합니다. Control 결과 큐는 결과를 유형별로 분기합니다. Crawler는 공통 워커 실행기를 사용해 우선 큐와 정기 큐에 일이 쌓였을 때 3:1로 수신합니다. 로컬 고정 결과 모드는 각 서비스 README의 `worker-test` 실행 방법을 참고합니다.
+정기 수집 신호는 Control이 수신하고, 최초·수동·리비전·복구 작업은 우선 큐에서, 정기 작업은 정기 큐에서 Crawler가 수신합니다. Control 결과 큐는 결과를 유형별로 분기합니다. 양쪽 큐에 실행 가능한 작업이 있으면 각 Crawler 워커는 실제 실행 시작 기준으로 우선 3건 뒤에 정기 1건을 시작합니다. 로컬 고정 결과 모드는 각 서비스 README의 `worker-test` 실행 방법을 참고합니다.
 
 DLQ는 만들어 두지만 기술 재전달 횟수와 redrive 정책은 아직 확정되지 않아 자동 연결하지 않습니다. EventBridge Scheduler도 Control이 공유 출처별 일정을 생성하는 흐름을 구현할 때 등록합니다. 정기 신호는 우선 큐로 직접 보내지 않습니다.
 

@@ -46,7 +46,7 @@ WEAVO_CONTROL_URL=http://localhost:8082 \
 
 collection-priority-jobs와 collection-scheduled-jobs에서 요청을 받고 Control이 해당 시도를 선점한 경우에만 고정 처리기를 실행합니다. 고정 처리기는 실제 수집을 수행하지 않았다는 실패 결과를 반환합니다. 시도별 `result.json`에 저장한 동일 본문을 `control-results`에 발행하고, 성공한 뒤에 수신 메시지를 삭제합니다.
 
-두 입력 큐에 요청이 쌓이면 우선 큐 3건, 정기 큐 1건 순으로 수신합니다. 한쪽이 비어 있으면 다른 큐를 계속 처리합니다.
+Control은 INITIAL·MANUAL·REVISION·RECOVERY를 우선 큐에, SCHEDULED를 정기 큐에 발행합니다. 양쪽 큐에 실행 가능한 작업이 있으면 각 워커가 선점 후 실제 실행 시작 기준으로 우선 3건 다음에 정기 1건을 시작합니다. 한쪽 큐에서 실행 가능한 작업이 없으면 다른 큐를 계속 처리합니다.
 
 `weavo.execution.heartbeat-interval`, `visibility`, `completion-grace`, `control-timeout`, `aws-timeout` 기본값은 각각 5초, 30초, 30초, 3초, 15초입니다. 작업 본문의 `max_duration_seconds`는 본 작업 예산이며, 그 뒤의 저장·발행은 별도 완료 유예와 Control lease 안에서 처리합니다.
 
