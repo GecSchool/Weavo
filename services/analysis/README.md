@@ -68,3 +68,9 @@ Bearer 토큰을 설정합니다. 서비스에서 생성된 Java 코드는 해�
 실제 Terra 호출을 확인하려면 환경 변수에 키를 설정하고
 `WEAVO_RUN_OPENAI_SMOKE=1 ./gradlew test --tests '*AnalysisHttpClientsTest.realTerraAcceptsTheCandidateSchemaAndReturnsUsableListRules'`를
 실행합니다. 이 검사는 고정 HTML 샘플을 API에 보내며 API 사용료가 발생합니다.
+
+
+실제 Terra가 추천한 상세 선택자와 이동 규칙을 Chromium으로 검증하려면 키와 로컬 파서
+환경 변수를 설정한 뒤 `WEAVO_RUN_OPENAI_SMOKE=1 ./gradlew browserSmokeTest --tests
+'*SourceAnalysisBrowserSmokeTest.terraProposalCollectsTheDetailBodyWithTheActualBrowser'`를
+실행합니다. 분석에는 테스트용 로컬 사이트의 목록과 상세만 사용합니다.

@@ -6,6 +6,8 @@ import com.sun.net.httpserver.HttpServer;
 import com.weavo.analysis.source.application.SourceAnalyzer;
 import com.weavo.analysis.source.application.SourceCandidate;
 import com.weavo.analysis.source.application.SourceCandidateGenerator;
+import com.weavo.analysis.source.infrastructure.http.IsolatedParserClient;
+import com.weavo.analysis.source.infrastructure.http.OpenAiCandidateGenerator;
 import com.weavo.extraction.FieldValueConverter.Type;
 import com.weavo.extraction.FieldValueProcessor;
 import com.weavo.extraction.JavaFieldParser;
@@ -30,6 +32,7 @@ import com.weavo.siteaccess.rule.Navigation.PaginationType;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,12 +40,44 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @EnabledIfSystemProperty(named = "weavo.browser.smoke", matches = "true")
 class SourceAnalysisBrowserSmokeTest {
+  @Test
+  @EnabledIfEnvironmentVariable(named = "WEAVO_RUN_OPENAI_SMOKE", matches = "1")
+  void terraProposalCollectsTheDetailBodyWithTheActualBrowser() throws Exception {
+    try (var site = new TestSite(false)) {
+      var generator =
+          new OpenAiCandidateGenerator(
+              System.getenv("OPENAI_API_KEY"), OpenAiCandidateGenerator.DEFAULT_MODEL);
+      var parser =
+          new IsolatedParserClient(
+              URI.create(System.getenv("WEAVO_PARSER_URL")), System.getenv("WEAVO_PARSER_TOKEN"));
+      var budget = budget(Duration.ofMinutes(5));
+      var fields = new FieldValueProcessor((code, values) -> parser.parse(code, values, budget));
+      var analyzer = new SourceAnalyzer(site.access(), fields, generator);
+      var result =
+          analyzer.analyze(
+              site.url(),
+              "Collect each notice title and the full body text found only on its detail page.",
+              budget);
+      assertThat(result.failure()).isNull();
+      var detail =
+          result.candidate().fields().stream()
+              .filter(field -> field.connector().location() == Location.DETAIL)
+              .map(field -> field.connector().fieldId())
+              .toList();
+      assertThat(detail).isNotEmpty();
+      assertThat(result.samples()).isNotEmpty();
+      assertThat(result.samples().getFirst().values()).contains("Body 1");
+      assertThat(site.details.get()).isPositive();
+    }
+  }
+
   @Test
   void validatesBrowserAndParserRowsDetailTypesAndActualNextPage() throws Exception {
     try (var site = new TestSite(false)) {
