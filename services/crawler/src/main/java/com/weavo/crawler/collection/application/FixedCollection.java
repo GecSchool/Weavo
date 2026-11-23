@@ -65,17 +65,6 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           null,
           error("TECHNICAL_FAILURE", "COLLECTION", "고정 수집 모드에서는 전체 수집만 지원합니다."));
     }
-    if (rules.detailGroups().keySet().stream()
-        .anyMatch(rule -> rule.open().target() != Target.CURRENT_TAB)) {
-      return result(
-          request,
-          attempt,
-          "NAVIGATION_FAILED",
-          null,
-          null,
-          null,
-          error("INVALID_NAVIGATION_RULE", "COLLECTION", "고정 수집에서 실행할 수 없는 이동 규칙입니다."));
-    }
 
     var budget =
         new WorkBudget(
@@ -369,7 +358,11 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         }
 
         state.stage = "DETAIL_RETURN";
-        var returned = tab.goBack(rule.returnRule().waitSelector());
+        var returned =
+            switch (rule.returnRule().type()) {
+              case HISTORY_BACK -> tab.goBack(rule.returnRule().waitSelector());
+              case CLOSE_TAB, CLOSE -> tab.awaitList(rule.returnRule().waitSelector());
+            };
         if (!returned.url().equals(list.url())) {
           throw new SiteAccessException(Kind.BROWSER_FAILED, "Detail did not return to the list");
         }
@@ -390,10 +383,18 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
   private static BrowserTab.DetailSnapshot openDetail(
       BrowserTab tab, BrowserTab.Item item, DetailNavigation rule) {
     var open = rule.open();
-    return switch (open.type()) {
-      case LINK ->
-          tab.followLink(item, open.selector(), open.urlAttribute(), rule.access().waitSelector());
-      case CLICK -> tab.clickDetail(item, open.selector(), rule.access().waitSelector());
+    String wait = rule.access().waitSelector();
+    return switch (open.target()) {
+      case CURRENT_TAB ->
+          open.type() == OpenType.LINK
+              ? tab.followLink(item, open.selector(), open.urlAttribute(), wait)
+              : tab.clickDetail(item, open.selector(), wait);
+      case NEW_TAB ->
+          open.type() == OpenType.LINK
+              ? tab.followLinkInNewTab(item, open.selector(), open.urlAttribute(), wait)
+              : tab.clickDetailInNewTab(item, open.selector(), wait);
+      case MODAL ->
+          tab.clickDetailInModal(item, open.selector(), wait, rule.returnRule().selector());
     };
   }
 
@@ -455,7 +456,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         String actualMarkup,
         DetailNavigation rule) {
       var open = rule.open();
-      if (open.type() == OpenType.CLICK) {
+      if (open.type() == OpenType.CLICK || open.target() == Target.MODAL) {
         // A click may use data attributes or handlers without exposing a stable link.
         return originalMarkup.equals(actualMarkup);
       }

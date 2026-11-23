@@ -8,6 +8,7 @@ import static com.weavo.siteaccess.SiteAccessException.Kind.WORK_LIMIT;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.options.ServiceWorkerPolicy;
@@ -82,20 +83,22 @@ public final class BrowserSession implements AutoCloseable {
       throw new SiteAccessException(BROWSER_FAILED, "Browser session is closed");
     }
     try {
-      var page = context.newPage();
-      try {
-        return new BrowserTab(
-            this, sites, budget, extraResources, page, context.newCDPSession(page));
-      } catch (RuntimeException error) {
-        try {
-          page.close();
-        } catch (RuntimeException closeError) {
-          error.addSuppressed(closeError);
-        }
-        throw error;
-      }
+      return guardTab(context.newPage());
     } catch (PlaywrightException error) {
       throw new SiteAccessException(BROWSER_FAILED, "Could not open a browser tab", error);
+    }
+  }
+
+  BrowserTab guardTab(Page page) {
+    try {
+      return new BrowserTab(this, sites, budget, extraResources, page, context.newCDPSession(page));
+    } catch (RuntimeException error) {
+      try {
+        page.close();
+      } catch (RuntimeException closeError) {
+        error.addSuppressed(closeError);
+      }
+      throw error;
     }
   }
 

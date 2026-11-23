@@ -20,12 +20,14 @@ import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.function.Supplier;
@@ -80,6 +82,38 @@ public final class BrowserTab implements AutoCloseable {
       }
       """;
 
+  private static final String FIND_MODAL =
+      """
+      ({ ready, close, checkExisting }) => {
+        const shown = node => node.getClientRects().length > 0
+          && getComputedStyle(node).visibility !== 'hidden'
+          && !node.closest('[hidden], [aria-hidden=true]');
+        const modals = new Set();
+        for (const content of document.querySelectorAll(ready)) {
+          if (!shown(content)) continue;
+          const dialog = content.closest('dialog,[role=dialog],[aria-modal=true]');
+          for (let parent = dialog ?? content; parent && parent !== document.body
+              && parent !== document.documentElement; parent = parent.parentElement) {
+            const controls = Array.from(parent.querySelectorAll(close)).filter(shown);
+            if (controls.length === 1) {
+              modals.add(parent);
+              break;
+            }
+            if (dialog) break;
+          }
+        }
+        if (checkExisting) return modals.size > 0;
+        if (modals.size > 1) throw new Error('Multiple matching modals');
+        return modals.size === 1 ? modals.values().next().value : null;
+      }
+      """;
+  private static final String MODAL_CLOSED =
+      """
+      modal => !modal.isConnected || modal.getClientRects().length === 0
+        || getComputedStyle(modal).visibility === 'hidden'
+        || Boolean(modal.closest('[hidden], [aria-hidden=true]'))
+      """;
+
   private final BrowserSession session;
   private final SiteSession sites;
   private final WorkBudget budget;
@@ -115,6 +149,7 @@ public final class BrowserTab implements AutoCloseable {
             .getAsJsonObject("frame")
             .get("id")
             .getAsString();
+    devTools.send("Page.enable");
     devTools.on("Fetch.requestPaused", this::handleRequest);
     // Unlike Playwright routing, Fetch gives Chromium's redirected requests their own intercept.
     devTools.send("Fetch.enable");
@@ -134,20 +169,7 @@ public final class BrowserTab implements AutoCloseable {
     return openDetail(
         item,
         selector,
-        element -> {
-          var url =
-              (String)
-                  element.evaluate(
-                      "(element, attribute) => {"
-                          + " const value = element.getAttribute(attribute);"
-                          + " return value?.trim() ? new URL(value, document.baseURI).href : null;"
-                          + " }",
-                      attribute);
-          if (url == null) {
-            throw new SiteAccessException(BROWSER_FAILED, "Detail link has no address");
-          }
-          return navigateTo(url);
-        },
+        element -> navigateTo(resolveLink(element, attribute).toString()),
         waitSelector);
   }
 
@@ -222,10 +244,6 @@ public final class BrowserTab implements AutoCloseable {
   }
 
   /** Confirms the list-level readiness rule after applying initial actions. */
-  public SiteAccess.PageSnapshot awaitList(String waitSelector) {
-    return move(() -> null, waitSelector, true, null).page();
-  }
-
   private SiteAccess.PageSnapshot listAction(
       Runnable action, String waitSelector, String itemSelector) {
     budget.check();
@@ -243,15 +261,205 @@ public final class BrowserTab implements AutoCloseable {
         throw new SiteAccessException(BROWSER_FAILED, "Could not inspect a list action", error);
       }
     }
-    return move(
-            () -> {
-              action.run();
-              return null;
-            },
-            waitSelector,
-            true,
-            progress)
-        .page();
+    var observation = progress;
+    return guarded(
+        true,
+        () -> {
+          action.run();
+          return snapshot(waitSelector, observation);
+        });
+  }
+
+  /** Visits the approved link in a separately guarded tab and closes it on return. */
+  public DetailSnapshot followLinkInNewTab(
+      Item item, String selector, String attribute, String waitSelector) {
+    return guarded(
+        true,
+        () -> {
+          URI requested =
+              withItemControl(item, selector, element -> resolveLink(element, attribute));
+          try (BrowserTab detail = session.newTab()) {
+            return new DetailSnapshot(
+                detail.navigate(requested.toString(), waitSelector), requested);
+          }
+        });
+  }
+
+  /**
+   * Opens the popup observed from the approved click, then loads its document under interception.
+   */
+  public DetailSnapshot clickDetailInNewTab(Item item, String selector, String waitSelector) {
+    return guarded(
+        true,
+        () ->
+            withItemControl(
+                item,
+                selector,
+                element -> {
+                  var before = List.copyOf(page.context().pages());
+                  var announced = new ArrayList<String>();
+                  Consumer<JsonObject> windowOpened = event -> announced.add(string(event, "url"));
+                  devTools.on("Page.windowOpen", windowOpened);
+                  try {
+                    Page popup =
+                        page.waitForPopup(
+                            new Page.WaitForPopupOptions().setTimeout(navigation.timeoutMillis()),
+                            () -> click(element));
+                    // Chromium's default egress guard prevents an unadopted popup from making
+                    // direct requests.
+                    // Replay exactly the single observed navigation once the popup has an
+                    // interceptor.
+                    try (BrowserTab detail = session.guardTab(popup)) {
+                      verifyPopup(item, before, popup, announced);
+                      URI requested = PublicUrls.parse(announced.getFirst()).uri();
+                      var captured = detail.navigate(requested.toString(), waitSelector);
+                      verifyPopup(item, before, popup, announced);
+                      return new DetailSnapshot(captured, null);
+                    }
+                  } finally {
+                    devTools.off("Page.windowOpen", windowOpened);
+                  }
+                }));
+  }
+
+  /** Captures only the newly opened modal and closes it using its own return control. */
+  public DetailSnapshot clickDetailInModal(
+      Item item, String selector, String waitSelector, String closeSelector) {
+    return guarded(
+        true,
+        () -> {
+          var args = Map.of("ready", waitSelector, "close", closeSelector);
+          if (Boolean.TRUE.equals(
+              page.evaluate(
+                  FIND_MODAL,
+                  Map.of("ready", waitSelector, "close", closeSelector, "checkExisting", true)))) {
+            throw new SiteAccessException(BROWSER_FAILED, "A matching modal was already open");
+          }
+          int tabCount = page.context().pages().size();
+          withItemControl(
+              item,
+              selector,
+              element -> {
+                click(element);
+                return null;
+              });
+          var modal = waitForModal(args);
+          try {
+            verifyModalContext(item, tabCount);
+            var result =
+                (Map<?, ?>)
+                    modal.evaluate(
+                        """
+                        (modal, limit) => {
+                          const html = modal.outerHTML;
+                          return new TextEncoder().encode(html).length > limit ? { oversized: true } : { html };
+                        }
+                        """,
+                        HttpTransport.HTML_LIMIT);
+            String html = readDom(result);
+            var close =
+                modal.evaluateHandle(
+                    """
+                    (modal, selector) => {
+                      const controls = Array.from(modal.querySelectorAll(selector)).filter(control =>
+                        control.getClientRects().length > 0
+                          && getComputedStyle(control).visibility !== 'hidden'
+                          && !control.closest('[hidden], [aria-hidden=true]'));
+                      return controls.length === 1 ? controls[0] : null;
+                    }
+                    """,
+                    closeSelector);
+            try {
+              var control = close.asElement();
+              if (control == null) {
+                throw new SiteAccessException(
+                    BROWSER_FAILED, "Modal close control could not be verified");
+              }
+              click(control);
+            } finally {
+              close.dispose();
+            }
+            waitUntil(timeout -> {
+              var closed =
+                  page.waitForFunction(
+                      MODAL_CLOSED, modal, new Page.WaitForFunctionOptions().setTimeout(timeout));
+              closed.dispose();
+            });
+            verifyModalContext(item, tabCount);
+            return new DetailSnapshot(
+                new SiteAccess.PageSnapshot(URI.create(item.pageUrl()), html), null);
+          } finally {
+            modal.dispose();
+          }
+        });
+  }
+
+  public SiteAccess.PageSnapshot awaitList(String waitSelector) {
+    return guarded(true, () -> snapshot(waitSelector));
+  }
+
+  private void verifyPopup(Item item, List<Page> before, Page popup, List<String> announced) {
+    var created =
+        page.context().pages().stream().filter(candidate -> !before.contains(candidate)).toList();
+    if (announced.size() != 1 || created.size() != 1 || created.getFirst() != popup) {
+      throw new SiteAccessException(
+          BROWSER_FAILED, "The click did not open one verified detail tab");
+    }
+    if (!PublicUrls.parse(page.url()).toString().equals(item.pageUrl())) {
+      throw new SiteAccessException(BROWSER_FAILED, "The original tab also navigated");
+    }
+    ensureNavigation();
+  }
+
+  private void verifyModalContext(Item item, int tabCount) {
+    if (page.context().pages().size() != tabCount
+        || !PublicUrls.parse(page.url()).toString().equals(item.pageUrl())) {
+      throw new SiteAccessException(
+          BROWSER_FAILED, "The action did not remain in the list document");
+    }
+    ensureNavigation();
+  }
+
+  private ElementHandle waitForModal(Map<String, String> args) {
+    while (true) {
+      ensureNavigation();
+      try {
+        var handle =
+            page.waitForFunction(
+                FIND_MODAL,
+                args,
+                new Page.WaitForFunctionOptions()
+                    .setTimeout(Math.min(100, navigation.timeoutMillis())));
+        var element = handle.asElement();
+        if (element != null) {
+          return element;
+        }
+        handle.dispose();
+        throw new SiteAccessException(BROWSER_FAILED, "The modal could not be identified");
+      } catch (TimeoutError ignored) {
+        // A bounded wait lets the worker cancellation interrupt modal detection.
+      }
+    }
+  }
+
+  private void click(ElementHandle element) {
+    ensureNavigation();
+    element.click(new ElementHandle.ClickOptions().setTimeout(navigation.timeoutMillis()));
+  }
+
+  private static URI resolveLink(ElementHandle element, String attribute) {
+    var url =
+        (String)
+            element.evaluate(
+                "(element, attribute) => {"
+                    + " const value = element.getAttribute(attribute);"
+                    + " return value?.trim() ? new URL(value, document.baseURI).href : null;"
+                    + " }",
+                attribute);
+    if (url == null) {
+      throw new SiteAccessException(BROWSER_FAILED, "Detail link has no address");
+    }
+    return PublicUrls.parse(url).uri();
   }
 
   /** Uses the browser's CSS engine and document order to check the captured list selection. */
@@ -274,46 +482,53 @@ public final class BrowserTab implements AutoCloseable {
   private DetailSnapshot openDetail(
       Item item, String selector, Function<ElementHandle, URI> action, String waitSelector) {
     return move(
-        () -> {
-          int tabCount = page.context().pages().size();
-          // Read the item and its target together, so a changed index cannot select another record.
-          var handle =
-              page.evaluateHandle(
-                  "({url, itemSelector, index, html, selector}) => {"
-                      + " if (document.URL.split('#', 1)[0] !== url) return null;"
-                      + " const item = document.querySelectorAll(itemSelector)[index];"
-                      + " if (item?.outerHTML !== html) return null;"
-                      + " const matches = item.querySelectorAll(selector);"
-                      + " return matches.length === 1 ? matches[0] : null;"
-                      + " }",
-                  Map.of(
-                      "url",
-                      item.pageUrl(),
-                      "itemSelector",
-                      item.selector(),
-                      "index",
-                      item.index(),
-                      "html",
-                      item.html(),
-                      "selector",
-                      selector));
-          try {
-            var element = handle.asElement();
-            if (element == null) {
-              throw new SiteAccessException(BROWSER_FAILED, "Detail target could not be verified");
-            }
-            URI directUrl = action.apply(element);
-            ensureNavigation();
-            if (documentUrl == null || page.context().pages().size() != tabCount) {
-              throw new SiteAccessException(
-                  BROWSER_FAILED, "Detail did not open in the current tab");
-            }
-            return directUrl;
-          } finally {
-            handle.dispose();
-          }
-        },
+        () ->
+            withItemControl(
+                item,
+                selector,
+                element -> {
+                  int tabCount = page.context().pages().size();
+                  URI directUrl = action.apply(element);
+                  ensureNavigation();
+                  if (documentUrl == null || page.context().pages().size() != tabCount) {
+                    throw new SiteAccessException(
+                        BROWSER_FAILED, "Detail did not open in the current tab");
+                  }
+                  return directUrl;
+                }),
         waitSelector);
+  }
+
+  private <T> T withItemControl(Item item, String selector, Function<ElementHandle, T> action) {
+    var handle =
+        page.evaluateHandle(
+            "({url, itemSelector, index, html, selector}) => {"
+                + " if (document.URL.split('#', 1)[0] !== url) return null;"
+                + " const item = document.querySelectorAll(itemSelector)[index];"
+                + " if (item?.outerHTML !== html) return null;"
+                + " const matches = item.querySelectorAll(selector);"
+                + " return matches.length === 1 ? matches[0] : null;"
+                + " }",
+            Map.of(
+                "url",
+                item.pageUrl(),
+                "itemSelector",
+                item.selector(),
+                "index",
+                item.index(),
+                "html",
+                item.html(),
+                "selector",
+                selector));
+    try {
+      var element = handle.asElement();
+      if (element == null) {
+        throw new SiteAccessException(BROWSER_FAILED, "Detail target could not be verified");
+      }
+      return action.apply(element);
+    } finally {
+      handle.dispose();
+    }
   }
 
   private URI navigateTo(String url) {
@@ -327,36 +542,43 @@ public final class BrowserTab implements AutoCloseable {
   }
 
   private DetailSnapshot move(Supplier<URI> action, String waitSelector) {
-    return move(action, waitSelector, false, null);
+    return guarded(
+        false,
+        () -> {
+          URI directUrl = action.get();
+          return new DetailSnapshot(snapshot(waitSelector), directUrl);
+        });
   }
 
-  private DetailSnapshot move(
-      Supplier<URI> action,
-      String waitSelector,
-      boolean existingDocument,
-      Map<String, Object> progress) {
+  private SiteAccess.PageSnapshot snapshot(String waitSelector) {
+    return snapshot(waitSelector, null);
+  }
+
+  private SiteAccess.PageSnapshot snapshot(String waitSelector, Map<String, Object> progress) {
+    waitUntil(timeout ->
+        page.waitForLoadState(
+            LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(timeout)));
+    String html = captureHtml(waitSelector, progress);
+    if (progress == null) {
+      ensureNavigation();
+    } else {
+      if (navigationFailure != null) {
+        throw navigationFailure;
+      }
+      budget.check();
+    }
+    if (SiteSession.isChallengePage(html)) {
+      throw new SiteAccessException(ACCESS_BLOCKED, "The rendered page is a challenge");
+    }
+    return new SiteAccess.PageSnapshot(PublicUrls.parse(page.url()).uri(), html);
+  }
+
+  private <T> T guarded(boolean existingDocument, Supplier<T> action) {
     navigation = budget.cap(BrowserSession.PAGE_TIMEOUT, BROWSER_TIMEOUT);
     navigationFailure = null;
     try {
       documentUrl = existingDocument ? PublicUrls.parse(page.url()) : null;
-      URI directUrl = action.get();
-      waitUntil(timeout ->
-          page.waitForLoadState(
-              LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(timeout)));
-      String html = captureHtml(waitSelector, progress);
-      if (progress == null) {
-        ensureNavigation();
-      } else {
-        if (navigationFailure != null) {
-          throw navigationFailure;
-        }
-        budget.check();
-      }
-      if (SiteSession.isChallengePage(html)) {
-        throw new SiteAccessException(ACCESS_BLOCKED, "The rendered page is a challenge");
-      }
-      return new DetailSnapshot(
-          new SiteAccess.PageSnapshot(PublicUrls.parse(page.url()).uri(), html), directUrl);
+      return action.get();
     } catch (PlaywrightException error) {
       if (navigationFailure != null) {
         throw stopIfNeeded(navigationFailure);
