@@ -2,3 +2,4 @@ rootProject.name = 'analysis'
 
 includeBuild('../shared/worker-runtime')
 includeBuild('../shared/site-access')
+includeBuild('../shared/field-extraction')

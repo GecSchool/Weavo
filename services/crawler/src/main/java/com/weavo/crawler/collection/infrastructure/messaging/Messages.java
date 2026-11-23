@@ -1,8 +1,8 @@
 package com.weavo.crawler.collection.infrastructure.messaging;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.weavo.crawler.collection.domain.rule.FieldConnector;
-import com.weavo.crawler.collection.domain.rule.Navigation;
+import com.weavo.siteaccess.rule.FieldConnector;
+import com.weavo.siteaccess.rule.Navigation;
 import java.util.List;
 import java.util.Map;
 

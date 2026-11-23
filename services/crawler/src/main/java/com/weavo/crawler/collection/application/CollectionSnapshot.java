@@ -1,9 +1,9 @@
 package com.weavo.crawler.collection.application;
 
-import com.weavo.crawler.collection.domain.rule.Navigation;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.ObjectReference;
 import com.weavo.siteaccess.SiteAccess.PageSnapshot;
+import com.weavo.siteaccess.rule.Navigation;
 import com.weavo.worker.application.AttemptContext;
 import java.io.IOException;
 import java.io.UncheckedIOException;

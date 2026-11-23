@@ -18,6 +18,8 @@ import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.weavo.siteaccess.rule.FieldConnector.DetailNavigation;
+import com.weavo.siteaccess.rule.FieldConnector.OpenType;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -161,6 +163,30 @@ public final class BrowserTab implements AutoCloseable {
 
   public SiteAccess.PageSnapshot navigate(String url, String waitSelector) {
     return move(() -> navigateTo(url), waitSelector).page();
+  }
+
+  public DetailSnapshot openDetail(Item item, DetailNavigation rule) {
+    var open = rule.open();
+    String wait = rule.access().waitSelector();
+    return switch (open.target()) {
+      case CURRENT_TAB ->
+          open.type() == OpenType.LINK
+              ? followLink(item, open.selector(), open.urlAttribute(), wait)
+              : clickDetail(item, open.selector(), wait);
+      case NEW_TAB ->
+          open.type() == OpenType.LINK
+              ? followLinkInNewTab(item, open.selector(), open.urlAttribute(), wait)
+              : clickDetailInNewTab(item, open.selector(), wait);
+      case MODAL -> clickDetailInModal(item, open.selector(), wait, rule.returnRule().selector());
+    };
+  }
+
+  public SiteAccess.PageSnapshot returnToList(DetailNavigation rule) {
+    var returned = rule.returnRule();
+    return switch (returned.type()) {
+      case HISTORY_BACK -> goBack(returned.waitSelector());
+      case CLOSE_TAB, CLOSE -> awaitList(returned.waitSelector());
+    };
   }
 
   /** Finds the exact previously captured item before following its configured detail link. */

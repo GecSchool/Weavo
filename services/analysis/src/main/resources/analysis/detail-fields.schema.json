@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_id": { "type": "string" },
+          "selector": { "type": "string" },
+          "extract": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["TEXT", "ATTRIBUTE"] },
+              "attribute": { "type": ["string", "null"] }
+            },
+            "required": ["type", "attribute"],
+            "additionalProperties": false
+          },
+          "parser_code": { "type": ["string", "null"] }
+        },
+        "required": ["field_id", "selector", "extract", "parser_code"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["fields"],
+  "additionalProperties": false
+}

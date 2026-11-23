@@ -51,7 +51,8 @@ public final class JavaFieldParser {
 
   public enum Stage {
     COMPILATION,
-    EXECUTION
+    EXECUTION,
+    EXECUTION_LIMIT
   }
 
   public record Diagnostic(String code, long line, long column) {}

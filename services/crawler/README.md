@@ -30,7 +30,7 @@ WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun -
 ./gradlew bootRun --args='--spring.profiles.active=worker'
 ```
 
-실행 전 `.env.example`을 참고해 Control의 URL과 서비스 인증 값, Redis·PostgreSQL, SQS·S3 환경을 준비합니다. 수집 시간 제한에 도달하면 완료한 항목만 별도의 완료 기한 안에 저장합니다. 목록·상세 HTML을 먼저 저장하고 마지막에 manifest를 올립니다. 결과의 `snapshot_ref`는 이 manifest를 가리킵니다. 목록이 0건이면 출처 범위의 `job.issue.detected`와 실패 완료 결과를 발행합니다.
+실행 전 `.env.example`을 참고해 Control의 URL과 서비스 인증 값, Redis·PostgreSQL, SQS·S3 환경을 준비합니다. `WEAVO_PARSER_URL`과 Crawler 전용 `WEAVO_PARSER_TOKEN`은 [격리 파서 실행기](../parser-executor/README.md)를 가리킵니다. 수집 시간 제한에 도달하면 완료한 항목만 별도의 완료 기한 안에 저장합니다. 목록·상세 HTML을 먼저 저장하고 마지막에 manifest를 올립니다. 결과의 `snapshot_ref`는 이 manifest를 가리킵니다. 목록이 0건이면 출처 범위의 `job.issue.detected`와 실패 완료 결과를 발행합니다.
 
 브라우저를 사용하는 고정 수집 테스트는 `./gradlew browserSmokeTest`에서 실행됩니다. 실행 가능한 로컬 LocalStack에 `weavo-local-artifacts` 버킷이 있을 때 `WEAVO_SNAPSHOT_TEST_S3=http://localhost:4566 ./gradlew browserSmokeTest`를 실행하면 저장된 manifest와 HTML을 S3에서 다시 읽는 경로도 검증합니다.
 
@@ -69,4 +69,4 @@ src/main/java/com/weavo/crawler/
 └── collection/                     # 수집 메시지와 이동·필드 규칙
 ```
 
-`collection.application`의 처리기는 작업 목적에 따라 실행을 분기합니다. `CollectionJobProcessor`는 JSON 메시지를 읽고 결과를 변환합니다. 두 서비스에서 동일한 폴링·lease 관리·결과 전달은 `services/shared/worker-runtime`의 코드로 실행합니다. 고정 수집의 임시 추출은 `services/shared/field-extraction`의 공통 Java 파서 및 타입 변환을 사용합니다.
+`collection.application`의 처리기는 작업 목적에 따라 실행을 분기합니다. `CollectionJobProcessor`는 JSON 메시지를 읽고 결과를 변환합니다. 두 서비스에서 동일한 폴링·lease 관리·결과 전달은 `services/shared/worker-runtime`의 코드로 실행합니다. Crawler는 `services/shared/field-extraction`으로 HTML에서 값을 추출하고 타입을 변환합니다. `parser.code`가 있으면 작업 기한 안에서 격리 실행기를 호출하며, 코드 실패와 호출 기술 오류를 구분합니다.

@@ -1,4 +1,4 @@
-package com.weavo.analysis.job.domain;
+package com.weavo.siteaccess.rule;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.net.URI;

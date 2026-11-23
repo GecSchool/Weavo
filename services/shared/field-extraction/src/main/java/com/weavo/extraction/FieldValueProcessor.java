@@ -7,10 +7,30 @@ import java.util.Objects;
 
 /** Resolves an extraction result to one typed field value and keeps the stage that failed. */
 public final class FieldValueProcessor {
-  private final JavaFieldParser parser;
+  private final Parser parser;
 
   public FieldValueProcessor(JavaFieldParser parser) {
+    this(Objects.requireNonNull(parser, "parser")::parse);
+  }
+
+  public FieldValueProcessor(Parser parser) {
     this.parser = Objects.requireNonNull(parser, "parser");
+  }
+
+  @FunctionalInterface
+  public interface Parser {
+    JavaFieldParser.Result parse(String code, List<String> rawValues);
+  }
+
+  /** The executor failed to respond, so no conclusion can be drawn about the parser code. */
+  public static final class ParserUnavailable extends RuntimeException {
+    public ParserUnavailable(String reason) {
+      super(reason);
+    }
+
+    public ParserUnavailable(String reason, Throwable cause) {
+      super(reason, cause);
+    }
   }
 
   public Result process(
