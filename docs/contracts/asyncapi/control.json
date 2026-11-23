@@ -25,6 +25,7 @@
     },
     "collectionPriorityJobs": {
       "address": "collection-priority-jobs",
+      "description": "수집 유형 INITIAL, MANUAL, REVISION, RECOVERY의 우선 큐.",
       "messages": {
         "collection_execute": {
           "$ref": "#/components/messages/collection_execute"
@@ -33,6 +34,7 @@
     },
     "collectionScheduledJobs": {
       "address": "collection-scheduled-jobs",
+      "description": "수집 유형 SCHEDULED의 정기 큐.",
       "messages": {
         "collection_execute": {
           "$ref": "#/components/messages/collection_execute"

@@ -154,7 +154,7 @@ Crawler는 승인된 목록·상세 필드를 검증하고 Ingestion은 최종 �
 | 1-OPEN | Ingestion → Control / SQS dataset.applied | 시작 결과 | 10.5 | 성공 확인 후 준비 |
 | 1a | Control → Ingestion / SQS schema.prepare | 최초 승인 change_job_id·v1 스키마 정의 | 18.1 — 메시지 형식 | Data DB에 비공개 스키마 준비 |
 | 1b | Ingestion → Control / SQS schema.prepared | 준비 결과·change_job_id | 18.1 — 메시지 형식 | 성공한 경우에만 최초 수집 요청; 실패 시 오류 처리 |
-| 2 | Control → Crawler / SQS collection.execute | execution_reason=INITIAL, 신규 대상 collection_mode=FULL, latest_records=[] | 7.2 — 메시지 형식 | 첫 목록부터 수집. FULL 대상은 최신값 일치 조기 종료 제외. 최대 300초 |
+| 2 | Control → Crawler / 우선 큐 collection.execute | execution_reason=INITIAL, 신규 대상 collection_mode=FULL, latest_records=[] | 7.2 — 메시지 형식 | 첫 목록부터 수집. FULL 대상은 최신값 일치 조기 종료 제외. 최대 300초 |
 | 3 | Crawler ↔ 사이트 / HTTP·브라우저 | 승인된 목록·상세·다음 목록/스크롤 규칙 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 목록은 검증된 방식으로, 상세는 브라우저로 공유 수집. 오류는 15.7~10으로 분기 |
 | 4 | Crawler → S3 / 시도별 manifest·객체 및 결과 저장 | 해당 시도의 불변 snapshot_ref·결과 이벤트 | 1.3, 5.3, 11.1 — S3 참조·시도 계약 | 저장 자체는 채택이 아님. Control이 다음 단계에서 유효 시도를 확인해 채택 |
 | 5 | Crawler → Control / SQS collection.completed | 종료 사유, project_results, snapshot_ref | 7.3 — 메시지 형식 | 적재 가능한 대상별 작업 생성 |
@@ -188,7 +188,7 @@ Crawler의 비교용 추출과 Ingestion의 최종 추출은 7.1의 공통 실�
 | 2b | Control → Ingestion / 내부 HTTP 최신값 조회 | source_id, targets(project_id, project_source_id) | 16.1 — 내부 HTTP 형식 | 프로젝트·출처별 최신 저장 사용자 필드값 최대 3건 조회 |
 | 3a | Ingestion → Control / HTTP 200 | projects[].latest_records, project_source_id, schema_version | 16.1 — 내부 HTTP 형식 | 0건은 정상 응답이며 해당 대상 FULL 수집 |
 | 3b | Ingestion → Control / HTTP 오류 응답 | error.code, message, details | 16.1, 1.4 — 내부 HTTP 형식 | 빈 목록으로 바꾸지 않음. 비교 기준 없이 임의 수집하지 않고 기술 오류 재처리 |
-| 4 | Control → Crawler / SQS collection.execute | execution_reason=SCHEDULED, projects[].규칙·최신값 | 7.2 — 메시지 형식 | 대상별 INCREMENTAL/FULL 기준으로 비교 |
+| 4 | Control → Crawler / 정기 큐 collection.execute | execution_reason=SCHEDULED, projects[].규칙·최신값 | 7.2 — 메시지 형식 | 대상별 INCREMENTAL/FULL 기준으로 비교 |
 | 5 | Crawler ↔ 사이트 / 목록·상세·스크롤 | 추출 순서 5개 묶음 또는 페이지 단위 | 5.1, 5.2, 4.1 — 실행 규칙; 사이트 응답 JSON은 정의하지 않음 | 3건 일치는 현재 구간, 2/3건 일치는 다음 구간 하나를 마친 뒤 프로젝트별 종료. FULL 및 미완료 대상은 계속 수집 |
 | 6a | Crawler → S3 / 객체 저장 | 최종 스냅샷과 manifest | 1.3, 5.3, 7.3 — 참여·적재 범위 | 최신 기준 어디에도 없는 정상값은 적재 후보로 남긴다. 최종 신규 여부는 Ingestion이 확인한다. |
 | 6b | Crawler → Control / SQS collection.completed | 종료 사유, snapshot_ref, project_results | 7.3 — 메시지 형식 | 적재 가능 대상만 다음 작업 생성 |
@@ -263,7 +263,7 @@ Control은 각 영향 프로젝트의 공개 스키마를 Data 측에서 조회�
 | 5a | Analysis → Control / SQS analysis.completed | validation PASSED, schema_change_required=false, 모든 영향 대상 검증 | 6.2, 16.2 — 메시지 형식 | 규칙 revision 갱신 및 자동 적용. 사용자 승인 없이 재수집 |
 | 5b | Analysis → Control / SQS analysis.completed | schema_change_required=true, 후보·샘플 | 6.2, 16.2 — 메시지 형식 | 해당 프로젝트별 사용자 검토·승인 흐름으로 연결 |
 | 5c | Analysis → Control / SQS analysis.completed | 복구 후보의 FAILED 또는 UNVERIFIABLE, error | 6.2, 16.2, 1.4 — 메시지 형식 | 확인 필요 상태 유지. 사용자 수정·재검증 안내. 파서 호출 기술 실패는 3.7 적용 |
-| 6a | Control → Crawler / SQS collection.execute | execution_reason=RECOVERY, 새 navigation_revision | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
+| 6a | Control → Crawler / 우선 큐 collection.execute | execution_reason=RECOVERY, 새 navigation_revision | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
 | 6b | Crawler → Control / SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 7.3 — 메시지 형식 | 영향 범위 재수집. 다른 프로젝트의 규칙을 임의로 변경하지 않음 |
 | 7a | Control → Ingestion / SQS ingestion.execute | 새 규칙으로 확보한 스냅샷·대상별 커넥터 | 8.1 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
 | 7b | Ingestion → Control / SQS ingestion.completed | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 8.2, 16.2, 1.4 — 메시지 형식 | 적재까지 성공해야 복구 완료 |
@@ -293,7 +293,7 @@ Control은 Data 측 공개 스키마와 Control의 프로젝트별 커넥터를 
 | 4c | Control → Ingestion / SQS dataset.apply SET_CONNECTOR_REVISION | 활성 출처는 ACTIVE, 승인 변경 대상은 CHANGE와 change_job_id·기존/새 revision | 10.6, 19.8 | Data DB 활성 또는 pending 가드 조건부 갱신 |
 | 4d | Ingestion → Control / SQS dataset.applied | 적용 결과·revision | 10.6 | 성공 확인 후 Control 규칙 활성화·재수집. 미확인이면 대기 |
 | 4b | Analysis → Control / SQS analysis.completed | 스키마 변경 필요 또는 검증 실패·기준 부족 | 6.2, 16.2, 1.4 — 메시지 형식 | 승인 대기 또는 확인 필요. 기존 정상 데이터 유지. 파서 호출 기술 실패는 3.7 적용 |
-| 5a | Control → Crawler / SQS collection.execute | execution_reason=RECOVERY, 새 커넥터 | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
+| 5a | Control → Crawler / 우선 큐 collection.execute | execution_reason=RECOVERY, 새 커넥터 | 7.2 — 메시지 형식 | 해당 규칙·대상으로 수집 실행 |
 | 5b | Crawler → Control / SQS collection.completed | 작업 ID, snapshot_ref, 종료 사유·대상별 결과 | 7.3 — 메시지 형식 | 영향 프로젝트에 필요한 화면 재수집 |
 | 6a | Control → Ingestion / SQS ingestion.execute | 같은 승인 코드·규칙과 최종 스냅샷 | 8.1 — 메시지 형식 | 해당 적재·준비·적용·삭제 작업 실행 |
 | 6b | Ingestion → Control / SQS ingestion.completed | 원래 job_id와 프로젝트·출처별 status·error, 해당 결과 필드 | 8.2, 16.2, 1.4 — 메시지 형식 | 정상 적재 후 대상 문제 상태 해소 |
@@ -386,7 +386,7 @@ Control은 Data 측 공개 스키마를 읽어 후보의 기준으로 사용한�
 | 승인 이후 | Control → Ingestion | dataset.apply BEGIN_CHANGE 및 dataset.applied 성공을 확인한다. |
 | 1a | Control → Ingestion | schema.prepare로 승인된 v2 스키마와 change_job_id를 전달해 비공개 준비한다. |
 | 1b | Ingestion → Control | schema.prepared 성공을 확인한 뒤 수집한다. 실패하면 기존 API를 유지하고 오류를 처리한다. |
-| 2 | Control → Crawler | 최종 대상 출처마다 REVISION/FULL로 처음부터 최대 300초 수집한다. |
+| 2 | Control → Crawler / 우선 큐 | 최종 대상 출처마다 REVISION/FULL로 처음부터 최대 300초 수집한다. |
 | 3 | Crawler → Control | 출처별 결과·snapshot_ref를 전달한다. |
 | 4 | Control → Ingestion | 각 성공 출처를 PREPARE로 요청한다. 한 RECORD 테이블에 새 schema_version·준비 job_id로 미공개 저장한다. |
 | 5 | Ingestion → Control | 출처별 준비 상태·정상 추출 건수와 job_id를 반환한다. 실패·0건이면 전체 교체를 보류하고 이전 API와 데이터를 유지한다. |

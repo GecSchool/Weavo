@@ -78,6 +78,7 @@ class JobWorkerTest {
       assertThat(execution.get().id()).isEqualTo(attemptIds.getValue());
       var ordered = inOrder(transport);
       ordered.verify(transport).changeVisibility(FIRST, 30);
+      ordered.verify(transport).recordExecutionStart(FIRST);
       ordered.verify(transport).store(KEY, RESULT);
       ordered.verify(transport).publish(RESULT);
       ordered.verify(transport).delete(FIRST);
@@ -111,6 +112,7 @@ class JobWorkerTest {
       assertThat(executed.get()).isEqualTo(1);
       verify(transport).changeVisibility(DUPLICATE, 11);
       verify(transport, never()).delete(DUPLICATE);
+      verify(transport, never()).recordExecutionStart(DUPLICATE);
       var attemptIds = ArgumentCaptor.forClass(UUID.class);
       verify(control, times(2)).claim(eq(JOB_ID), attemptIds.capture());
       assertThat(attemptIds.getAllValues()).doesNotHaveDuplicates();
@@ -130,6 +132,21 @@ class JobWorkerTest {
 
       assertThat(executed.get()).isZero();
       verify(transport).delete(FIRST);
+      verify(transport, never()).recordExecutionStart(FIRST);
+    }
+  }
+
+  @Test
+  void countsNoStartWhenTheAcquiredAttemptCannotSetVisibility() throws InterruptedException {
+    when(control.claim(eq(JOB_ID), any())).thenReturn(ACQUIRED);
+    doThrow(SdkClientException.create("visibility update failed"))
+        .when(transport)
+        .changeVisibility(FIRST, 30);
+
+    try (var worker = worker(TIMING, attempt -> new Result(KEY, RESULT))) {
+      worker.handle(FIRST);
+      assertThat(executed.get()).isZero();
+      verify(transport, never()).recordExecutionStart(FIRST);
     }
   }
 

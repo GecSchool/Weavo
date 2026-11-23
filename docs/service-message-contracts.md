@@ -154,12 +154,12 @@ error.code는 정형 코드, message는 사람에게 표시할 요약, details�
 |---|---|---|
 | 정기 요청 큐 | Scheduler → Control | collection.schedule.triggered |
 | Analysis 작업 큐 | Control → Analysis | analysis.execute |
-| 우선 수집 큐 | Control → Crawler | 최초·수동 수집의 collection.execute |
-| 정기 수집 큐 | Control → Crawler | 정기 collection.execute |
+| 우선 수집 큐 | Control → Crawler | INITIAL·MANUAL·REVISION·RECOVERY의 collection.execute |
+| 정기 수집 큐 | Control → Crawler | SCHEDULED의 collection.execute |
 | Ingestion 작업 큐 | Control → Ingestion | schema.prepare, ingestion.execute, dataset.apply, project-data.delete |
 | Control 결과 큐 | Analysis·Crawler·Ingestion → Control | 각 결과와 job.issue.detected |
 
-리비전·복구 작업의 우선 큐 배치는 별도 운영 확인 항목이다. 동일 큐에 서로 다른 서비스 소비자를 연결하지 않는다. Control 결과 큐는 Control만 소비하고 message type에 따라 내부 handler로 분기한다. 한 큐에서 type별 Listener를 독립적으로 경쟁 소비시키지 않는다. 우선·정기 큐의 기존 3:1 정책은 별도 소비 조정 코드가 필요하며 @SqsListener를 두 개 붙이는 것만으로 보장되지 않는다.
+Control은 execution_reason에 따라 수집 명령의 큐를 선택한다. Crawler 워커마다 선점 및 실제 실행에 진입한 우선 작업 3건을 연속 시작한 뒤 실행 가능한 정기 작업 1건을 우선 시작한다. 미선점·중복·종료된 메시지는 집계하지 않고, 다른 큐에 실행할 요청이 없으면 가능한 작업을 계속 처리한다. 실행 중 작업은 유지한다. 여러 워커 사이에는 전역 실행 순서를 두지 않는다. 동일 큐에 서로 다른 서비스 소비자를 연결하지 않는다. Control 결과 큐는 Control만 소비하고 message type에 따라 내부 handler로 분기한다. 한 큐에서 type별 Listener를 독립적으로 경쟁 소비시키지 않는다. 우선·정기 큐의 기존 3:1 정책은 별도 소비 조정 코드가 필요하며 @SqsListener를 두 개 붙이는 것만으로 보장되지 않는다.
 
 ## 4 파싱 코드
 
@@ -1348,7 +1348,7 @@ Analysis·Crawler·Ingestion은 `POST /internal/v1/parser:execute`로 격리 파
 5. DB 1~2건은 전부 비교하며 0건의 승인 샘플이 부족하면 자동 적용하지 않는다. 후보 검증은 최초 포함 최대 3회다.
 6. 공개 포인터는 Data DB가 소유하며 MVP에서 공개 스키마 캐시를 사용하지 않는다. Control과 Data DB를 한 번에 원자 갱신한다고 가정하지 않는다.
 7. 비활성 출처·프로젝트 쓰기 차단 상태의 운영 보관 기간과 16.5의 계정 정리 HTTP 재처리 구현을 검증한다.
-8. DLQ 담당은 Control이다. 기술 재전달 한도·작업 기한과 리비전/복구 큐 운영 값은 환경 설정이다.
+8. DLQ 담당은 Control이다. 기술 재전달 한도·작업 기한과 물리 큐 이름은 환경 설정이다. 수집 유형별 큐 배치는 3.3을 따른다.
 
 ## 13 참고 근거
 
