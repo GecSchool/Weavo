@@ -1,0 +1,23 @@
+plugins {
+    id 'application'
+    id 'com.diffplug.spotless' version '8.11.0'
+}
+
+group = 'com.weavo.parser'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation 'com.weavo:field-extraction'
+    implementation 'tools.jackson.core:jackson-databind:3.1.7'
+}
+
+application {
+    mainClass = 'com.weavo.parser.ParserServer'
+}
+
+spotless { java { googleJavaFormat() } }
