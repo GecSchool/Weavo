@@ -849,6 +849,11 @@ class FixedCollectionBrowserTest {
   }
 
   private static Job<CollectionExecute> job(String url, AccessMethod method, OpenType openType) {
+    return job(url, method, openType, Target.CURRENT_TAB);
+  }
+
+  private static Job<CollectionExecute> job(
+      String url, AccessMethod method, OpenType openType, Target target) {
     var navigation =
         new Navigation(
             url,
@@ -856,6 +861,12 @@ class FixedCollectionBrowserTest {
             new ListAccess(method, null),
             "article",
             new Pagination(PaginationType.NONE, null, null, null, null, null, null, null));
+    var returnType =
+        switch (target) {
+          case CURRENT_TAB -> ReturnType.HISTORY_BACK;
+          case NEW_TAB -> ReturnType.CLOSE_TAB;
+          case MODAL -> ReturnType.CLOSE;
+        };
     var detail =
         new DetailNavigation(
             new DetailAccess(DetailAccessMethod.BROWSER, ".body"),
@@ -863,8 +874,8 @@ class FixedCollectionBrowserTest {
                 openType,
                 openType == OpenType.LINK ? "a" : "button",
                 openType == OpenType.LINK ? "href" : null,
-                Target.CURRENT_TAB),
-            new DetailReturn(ReturnType.HISTORY_BACK, ".list", null));
+                target),
+            new DetailReturn(returnType, ".list", target == Target.MODAL ? ".close" : null));
     var request =
         new CollectionExecute(
             UUID.randomUUID().toString(),
@@ -878,6 +889,155 @@ class FixedCollectionBrowserTest {
         Instant.now().plusSeconds(30).toString(),
         Duration.ofSeconds(20),
         request);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void newTabDetailsReturnToTheSameRowAndPersistOnlyVerifiedDirectLinks(boolean click)
+      throws Exception {
+    var list =
+        LIST.replace("location.href='/detail/1'", "window.open('/detail/1')")
+            .replace("location.href='/detail/2'", "window.open('/detail/2')");
+    try (var site = new TestSite(list)) {
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  job(
+                      site.url("/list"),
+                      AccessMethod.BROWSER,
+                      click ? OpenType.CLICK : OpenType.LINK,
+                      Target.NEW_TAB),
+                  attempt(Duration.ofSeconds(12)));
+      assertThat(result.stopReason())
+          .withFailMessage("%s", result.error())
+          .isEqualTo("END_OF_LIST");
+      assertThat(site.detailRequests.get()).isEqualTo(2);
+      var items =
+          read(stored.get(result.snapshotRef().key())).path("list_snapshots").get(0).path("items");
+      assertThat(items).hasSize(2);
+      for (var item : items) {
+        var index = item.path("item_index").asInt();
+        var detail = HtmlScope.parse(html(stored.get(key(item.path("details").get(0)))));
+        assertThat(text(detail, ".body")).isEqualTo("본문 " + (index + 1));
+        var sourceUrl = item.path("source_urls").get(0).path("source_url");
+        if (click) {
+          assertThat(sourceUrl.isNull()).isTrue();
+        } else {
+          assertThat(sourceUrl.asString()).isEqualTo(site.url("/detail/" + (index + 1)));
+        }
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void modalDetailsUseOnlyTheModalFragmentAndDoNotPersistADirectUrl(boolean click)
+      throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", false))) {
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  job(
+                      site.url("/list"),
+                      AccessMethod.BROWSER,
+                      click ? OpenType.CLICK : OpenType.LINK,
+                      Target.MODAL),
+                  attempt(Duration.ofSeconds(12)));
+      assertThat(result.stopReason())
+          .withFailMessage("%s", result.error())
+          .isEqualTo("END_OF_LIST");
+      assertThat(site.detailRequests.get()).isZero();
+      var items =
+          read(stored.get(result.snapshotRef().key())).path("list_snapshots").get(0).path("items");
+      assertThat(items).hasSize(2);
+      for (var item : items) {
+        int index = item.path("item_index").asInt();
+        var raw = html(stored.get(key(item.path("details").get(0))));
+        assertThat(raw).doesNotContain("outside the dialog");
+        var detail = HtmlScope.parse(raw);
+        assertThat(text(detail, ".body")).isEqualTo("본문 " + (index + 1));
+        assertThat(item.path("source_urls").get(0).path("source_url").isNull()).isTrue();
+      }
+    }
+  }
+
+  @Test
+  void alreadyOpenModalIsRejectedInsteadOfSavingStaleContent() throws Exception {
+    try (var site = new TestSite(modalList("this.closest('dialog').close()", true))) {
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL),
+                  attempt(Duration.ofSeconds(12)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(result.snapshotRef()).isNull();
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "window.open('/detail/1'); window.open('/detail/2')",
+        "window.open('/detail/1'); history.replaceState(null, '', '/other')"
+      })
+  void ambiguousNewTabActionDoesNotPublishASnapshot(String action) throws Exception {
+    try (var site = new TestSite(LIST.replace("location.href='/detail/1'", action))) {
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.NEW_TAB),
+                  attempt(Duration.ofSeconds(12)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(result.snapshotRef()).isNull();
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  @Test
+  void closingTheModalMustNotNavigateTheOriginalTab() throws Exception {
+    try (var site =
+        new TestSite(
+            modalList(
+                "this.closest('dialog').close(); history.replaceState(null, '', '/other')",
+                false))) {
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, mime, bytes) -> stored.put(key, bytes))
+              .execute(
+                  job(site.url("/list"), AccessMethod.BROWSER, OpenType.CLICK, Target.MODAL),
+                  attempt(Duration.ofSeconds(12)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(result.snapshotRef()).isNull();
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  private static String modalList(String closeAction, boolean alreadyOpen) {
+    return """
+    <main class=list>
+      <article><h2>첫 글</h2><button onclick="show(1)">Open</button>
+        <a href="#detail" onclick="show(1);return false">Details</a></article>
+      <article><h2>둘째 글</h2><button onclick="show(2)">Open</button>
+        <a href="#detail" onclick="show(2);return false">Details</a></article>
+      <p>outside the dialog</p>
+    </main>
+    <dialog><div class=body></div><span class=author>작성자</span>
+      <button class=close onclick="%s">Close</button></dialog>
+    <script>
+      const dialog = document.querySelector('dialog');
+      function show(i) {
+        dialog.querySelector('.body').textContent = '본문 ' + i;
+        dialog.showModal();
+      }
+      %s
+    </script>
+    """
+        .formatted(closeAction, alreadyOpen ? "show(9);" : "");
   }
 
   private static CollectionProject project(
