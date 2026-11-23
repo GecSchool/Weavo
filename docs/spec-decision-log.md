@@ -520,7 +520,7 @@ Control Service ─ 적재 작업 큐 ─ Ingestion Service ─ RDS PostgreSQL
 - `Analysis Service`는 초기 설정과 복구에서 반복 목록·레코드 경계·상세 이동 및 다음 목록 이동 후보를 분석하고 selector·변환 규칙 후보를 검증한다.
 - `Crawler Service`는 승인된 목록·상세 탐색 규칙을 실행하고 실행 중 관찰한 탐색 결과와 실패를 기록한다.
 - 최초 설정·스키마 변경에서 사용자가 승인한 규칙과 자동 힐링 검증을 통과한 규칙은 프로젝트 커넥터 정의에 저장한다.
-- Analysis·Crawler·Ingestion은 Java 21·Spring Boot를 사용한다. 공통 모듈의 Java 필드 파서와 이를 사용하는 Crawler의 목록·상세 필드 검증은 구현되어 있다. 별도 격리 파서 실행기의 구축과 세 서비스의 내부 HTTP 연동은 남아 있다.
+- Analysis·Crawler·Ingestion은 Java 21·Spring Boot를 사용한다. 공통 Java 필드 파서와 로컬 격리 실행기를 구현했으며, Analysis와 Crawler는 내부 HTTP로 실행기를 호출한다. Ingestion 연동과 배포 환경에서의 격리 실행·컴파일 캐시 검증은 남아 있다.
 - Analysis·Crawler·Ingestion은 HTML 추출·타입 변환을 공통 모듈로 수행한다. 가공 코드가 있는 필드는 격리된 파서 실행기에 내부 동기 HTTP로 코드를 보내 실행한다. 커넥터에 parser가 null이면 공통 모듈의 기본 추출·타입 변환 규칙을 적용한다.
 - 실행기는 공통 Java 21 함수 틀, 컴파일, 컴파일 결과 캐시 및 실행을 담당한다. 코드 실행 환경에는 파일·외부 네트워크·자격 증명·DB·S3 접근을 제한하고 CPU·메모리·실행 시간 한도를 강제한다. 호출을 인증하는 프로세스와 코드를 실행하는 환경을 분리한다.
 - 정상 수집에서는 레코드마다 AI를 호출하지 않고 승인된 결정적 규칙만 반복 실행한다.
