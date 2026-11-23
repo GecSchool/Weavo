@@ -56,4 +56,4 @@ src/main/java/com/weavo/analysis/
 └── AwsResourceChecker.java         # SQS·S3 읽기 전용 연결 확인
 ```
 
-`job.application`의 처리기는 작업 목적에 따라 실행을 분기합니다. `AnalysisJobProcessor`는 JSON 메시지를 읽고 결과를 변환합니다. 두 서비스에서 동일한 폴링·lease 관리·결과 전달은 `services/shared/worker-runtime`의 코드로 실행합니다. 공통 Java 파서 모듈과 생성 코드의 격리 실행은 아직 구현하지 않았습니다.
+`job.application`의 처리기는 작업 목적에 따라 실행을 분기합니다. `AnalysisJobProcessor`는 JSON 메시지를 읽고 결과를 변환합니다. 두 서비스에서 동일한 폴링·lease 관리·결과 전달은 `services/shared/worker-runtime`의 코드로 실행합니다. 공통 Java 필드 파서는 `services/shared/field-extraction`에 구현되어 있습니다. Analysis의 후보 검증에 격리 파서 실행기를 연결하는 작업은 남아 있습니다.
