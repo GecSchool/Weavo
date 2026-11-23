@@ -39,6 +39,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -60,7 +61,7 @@ class SourceAnalysisBrowserSmokeTest {
       var budget = budget(Duration.ofMinutes(5));
       var fields =
           new FieldValueProcessor((code, values) ->
-              parser.parse(code, values, budget::beforeRequest, budget::remaining));
+              parser.parse(code, values, budget::beforeRequest, budget::remainingWhileWaiting));
       var analyzer = new SourceAnalyzer(site.access(), fields, generator);
       var result =
           analyzer.analyze(
@@ -131,23 +132,19 @@ class SourceAnalysisBrowserSmokeTest {
   }
 
   @Test
-  void retriesWithTheObservedDetailDomWhenAFieldSelectorDoesNotMatch() throws Exception {
+  void confirmsDetailFieldsFromTheOpenedPageBeforeAcceptingValues() throws Exception {
     try (var site = new TestSite(false)) {
-      var calls = new AtomicInteger();
-      var analyzer =
-          analyzer(
-              site,
+      var proposals = new AtomicInteger();
+      var refinements = new AtomicInteger();
+      var generator =
+          generator(
               (input, budget) -> {
-                var valid = candidate(input.listUrl(), "h2", null, "a.next");
-                if (calls.incrementAndGet() > 1) {
-                  assertThat(input.observedScreens().get("DETAIL")).contains("Body 1");
-                  assertThat(input.previousFailure().candidateKey()).isEqualTo("body");
-                  return valid;
-                }
-                var proposed = new java.util.ArrayList<>(valid.fields());
-                var body = proposed.get(1);
+                proposals.incrementAndGet();
+                var proposed = candidate(input.listUrl(), "h2", null, "a.next");
+                var fields = new java.util.ArrayList<>(proposed.fields());
+                var body = fields.get(1);
                 var connector = body.connector();
-                proposed.set(
+                fields.set(
                     1,
                     new SourceCandidate.Field(
                         body.name(),
@@ -156,17 +153,97 @@ class SourceAnalysisBrowserSmokeTest {
                         body.reason(),
                         new FieldConnector(
                             connector.fieldId(),
-                            connector.location(),
-                            ".not-the-body",
+                            Location.DETAIL,
+                            "body",
                             connector.extract(),
-                            connector.parser(),
+                            null,
                             connector.detailNavigation())));
-                return new SourceCandidate(valid.navigation(), proposed);
+                return new SourceCandidate(proposed.navigation(), fields);
+              },
+              input -> {
+                refinements.incrementAndGet();
+                assertThat(input.collectionPurpose()).isEqualTo("공지 본문 수집");
+                assertThat(input.samples())
+                    .singleElement()
+                    .satisfies(sample -> {
+                      assertThat(sample.dom()).contains("Body 1", "Share this notice");
+                      assertThat(sample.fields())
+                          .singleElement()
+                          .satisfies(field -> assertThat(field.fieldId()).isEqualTo("body"));
+                    });
+                return detailRules(input, ".body");
               });
-      var output = analyzer.analyze(site.url(), "공지 본문 수집", budget(Duration.ofSeconds(12)));
+      var analyzer =
+          new SourceAnalyzer(
+              site.access(), new FieldValueProcessor(new JavaFieldParser()), generator);
+      var output = analyzer.analyze(site.url(), "공지 본문 수집", budget(Duration.ofSeconds(15)));
       assertThat(output.failure()).isNull();
-      assertThat(output.samples().getFirst()).containsEntry("body", "Body 1");
+      assertThat(output.candidate().fields().get(1).connector().selector()).isEqualTo(".body");
+      assertThat(output.samples().stream().map(sample -> sample.get("body")))
+          .containsExactly("Body 1", "Body 2", "Body 3");
+      assertThat(proposals.get()).isEqualTo(1);
+      assertThat(refinements.get()).isEqualTo(1);
+      assertThat(site.details.get()).isEqualTo(3);
+      assertThat(site.next.get()).isEqualTo(1);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"body", "html > body", ".missing"})
+  void retriesWithObservedDetailsWhenTheRefinementCannotBeUsed(String selector) throws Exception {
+    try (var site = new TestSite(false)) {
+      var calls = new AtomicInteger();
+      var generator =
+          generator(
+              (input, budget) -> {
+                if (calls.incrementAndGet() > 1) {
+                  assertThat(input.observedScreens().get("DETAIL")).contains("Body 1");
+                  assertThat(input.previousFailure().candidateKey()).isEqualTo("body");
+                  assertThat(input.previousFailure().reason())
+                      .isEqualTo(
+                          selector.equals(".missing")
+                              ? "NO_MATCH"
+                              : "DETAIL_SELECTOR_MATCHES_PAGE_ROOT");
+                  return null;
+                }
+                return candidate(input.listUrl(), "h2", null, "a.next");
+              },
+              input -> detailRules(input, selector));
+      var analyzer =
+          new SourceAnalyzer(
+              site.access(), new FieldValueProcessor(new JavaFieldParser()), generator);
+      var output = analyzer.analyze(site.url(), "공지 본문 수집", budget(Duration.ofSeconds(12)));
+      assertThat(output.candidate()).isNull();
+      assertThat(output.samples()).isEmpty();
+      assertThat(output.failure().stage()).isEqualTo("EXTRACTION");
       assertThat(calls.get()).isEqualTo(2);
+    }
+  }
+
+  @Test
+  void listOnlyDiscoveryFinishesWithOneProposal() throws Exception {
+    try (var site = new TestSite(false)) {
+      var proposals = new AtomicInteger();
+      var generator =
+          generator(
+              (input, budget) -> {
+                proposals.incrementAndGet();
+                var proposed = candidate(input.listUrl(), "h2", null, "a.next");
+                return new SourceCandidate(
+                    proposed.navigation(), List.of(proposed.fields().getFirst()));
+              },
+              input -> {
+                throw new AssertionError("List-only discovery has no detail refinement");
+              });
+      var analyzer =
+          new SourceAnalyzer(
+              site.access(), new FieldValueProcessor(new JavaFieldParser()), generator);
+      var result = analyzer.analyze(site.url(), "공지 제목 수집", budget(Duration.ofSeconds(12)));
+      assertThat(result.failure()).isNull();
+      assertThat(result.samples()).hasSize(4);
+      assertThat(proposals.get()).isEqualTo(1);
+      assertThat(site.details.get()).isZero();
+      assertThat(site.next.get()).isEqualTo(1);
     }
   }
 
@@ -182,10 +259,15 @@ class SourceAnalysisBrowserSmokeTest {
           new SourceAnalyzer(
               site.access(),
               fields,
-              (input, budget) -> {
-                calls.incrementAndGet();
-                return candidate(input.listUrl(), "h2", "return rawValues.getFirst();", "a.next");
-              });
+              generator(
+                  (input, budget) -> {
+                    calls.incrementAndGet();
+                    return candidate(
+                        input.listUrl(), "h2", "return rawValues.getFirst();", "a.next");
+                  },
+                  refinement -> {
+                    throw new AssertionError("List parser failure stops discovery");
+                  }));
       var output = analyzer.analyze(site.url(), "공지 수집", budget(Duration.ofSeconds(12)));
       assertThat(output.failure().stage()).isEqualTo("PARSER_CALL");
       assertThat(output.samples()).isEmpty();
@@ -283,6 +365,62 @@ class SourceAnalysisBrowserSmokeTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void finalVerificationUsesHttpOnlyForEquivalentLists(boolean browserOnly) throws Exception {
+    try (var site = new TestSite(false, browserOnly)) {
+      var analyzer =
+          analyzer(
+              site,
+              (input, budget) -> {
+                throw new AssertionError("Final verification must reuse the approved candidate");
+              });
+      var verified =
+          analyzer.verify(
+              candidate(site.url(), "h2", null, "a.next"), budget(Duration.ofSeconds(15)));
+      assertThat(verified.failure()).isNull();
+      assertThat(verified.navigation().listAccess().method())
+          .isEqualTo(browserOnly ? AccessMethod.BROWSER : AccessMethod.HTTP);
+      assertThat(verified.samples()).hasSize(3);
+      assertThat(verified.samples().getFirst().sourceUrl()).endsWith("/detail/1");
+      assertThat(verified.samples().getFirst().fields())
+          .anySatisfy(field -> {
+            assertThat(field.fieldId()).isEqualTo("absent");
+            assertThat(field.result().status())
+                .isEqualTo(com.weavo.extraction.FieldExtractor.Status.ABSENT);
+          });
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void verifiesTheLastPageWithAnExplicitlyDisabledNextLink(boolean disabledInHttp)
+      throws Exception {
+    String next =
+        disabledInHttp
+            ? "<a class=next href=/next aria-disabled=true>Next</a>"
+            : "<a class=next href=/next>Next</a><script>"
+                + "document.querySelector('a.next').setAttribute('aria-disabled', 'true');</script>";
+    try (var site = new TestSite(false, false, next)) {
+      var analyzer =
+          analyzer(
+              site,
+              (input, budget) -> {
+                throw new AssertionError("Revalidation must use the existing rule");
+              });
+      var verified =
+          analyzer.verify(
+              candidate(site.url(), "h2", null, "a.next"), budget(Duration.ofSeconds(15)));
+
+      assertThat(verified.failure()).isNull();
+      assertThat(verified.samples()).hasSize(3);
+      assertThat(verified.navigation().pagination().type()).isEqualTo(PaginationType.NEXT_LINK);
+      assertThat(verified.navigation().listAccess().method())
+          .isEqualTo(disabledInHttp ? AccessMethod.HTTP : AccessMethod.BROWSER);
+      assertThat(site.next.get()).isZero();
+    }
+  }
+
   private static SourceCandidate candidate(String url, String title, String parser, String next) {
     var rule =
         new Navigation(
@@ -326,22 +464,65 @@ class SourceAnalysisBrowserSmokeTest {
                 new FieldConnector("absent", Location.ABSENT, null, null, null, null))));
   }
 
-  private static SourceAnalyzer analyzer(TestSite site, SourceCandidateGenerator generator) {
+  private static SourceAnalyzer analyzer(TestSite site, Proposal propose) {
     return new SourceAnalyzer(
-        site.access(), new FieldValueProcessor(new JavaFieldParser()), generator);
+        site.access(),
+        new FieldValueProcessor(new JavaFieldParser()),
+        generator(propose, input -> detailRules(input, ".body")));
+  }
+
+  private static SourceCandidateGenerator generator(
+      Proposal propose,
+      Function<SourceCandidateGenerator.DetailInput, List<SourceCandidateGenerator.DetailField>>
+          refine) {
+    return new SourceCandidateGenerator() {
+      @Override
+      public SourceCandidate propose(Input input, WorkBudget budget) throws InterruptedException {
+        return propose.generate(input, budget);
+      }
+
+      @Override
+      public List<DetailField> refineDetails(DetailInput input, WorkBudget budget) {
+        return refine.apply(input);
+      }
+    };
+  }
+
+  private static List<SourceCandidateGenerator.DetailField> detailRules(
+      SourceCandidateGenerator.DetailInput input, String selector) {
+    return input.samples().stream()
+        .flatMap(sample -> sample.fields().stream())
+        .map(field ->
+            new SourceCandidateGenerator.DetailField(
+                field.fieldId(), selector, new Extract(ExtractType.TEXT, null), null))
+        .toList();
   }
 
   private static WorkBudget budget(Duration duration) {
     return new WorkBudget(Instant.now().plus(duration), () -> false, deadline -> {});
   }
 
-  private static final class TestSite implements AutoCloseable {
+  @FunctionalInterface
+  private interface Proposal {
+    SourceCandidate generate(SourceCandidateGenerator.Input input, WorkBudget budget)
+        throws InterruptedException;
+  }
+
+  static final class TestSite implements AutoCloseable {
     private final HttpServer server;
     private final InetAddress address;
     private final AtomicInteger next = new AtomicInteger();
     private final AtomicInteger details = new AtomicInteger();
 
     TestSite(boolean disallowed) throws IOException {
+      this(disallowed, false);
+    }
+
+    TestSite(boolean disallowed, boolean browserOnly) throws IOException {
+      this(disallowed, browserOnly, "<a class=next href=/next>Next</a>");
+    }
+
+    TestSite(boolean disallowed, boolean browserOnly, String nextControl) throws IOException {
       address = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
       server = HttpServer.create(new InetSocketAddress(address, 0), 0);
       server.createContext(
@@ -367,9 +548,11 @@ class SourceAnalysisBrowserSmokeTest {
                 } else if (path.startsWith("/detail/")) {
                   details.incrementAndGet();
                   body =
-                      "<div class=body>Body "
+                      "<header>University portal</header><main><article><h1>Notice title</h1>"
+                          + "<div class=body>Body "
                           + path.substring(path.lastIndexOf('/') + 1)
-                          + "</div>";
+                          + "</div><footer>Share this notice</footer></article></main>"
+                          + "<footer>Campus links</footer>";
                 } else {
                   body =
                       "<main>"
@@ -377,7 +560,11 @@ class SourceAnalysisBrowserSmokeTest {
                           + item(2)
                           + item(3)
                           + item(4)
-                          + "<a class=next href=/next>Next</a></main>";
+                          + nextControl
+                          + "</main>"
+                          + (browserOnly
+                              ? "<script>document.querySelector('h2').textContent='Browser item';</script>"
+                              : "");
                 }
               }
               byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

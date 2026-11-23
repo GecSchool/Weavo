@@ -131,7 +131,7 @@ class AnalysisHttpClientsTest {
                   "return rawValues.get(0);",
                   List.of("name"),
                   budget::beforeRequest,
-                  budget::remaining);
+                  budget::remainingWhileWaiting);
       assertThat(calls.get()).isEqualTo(2);
       assertThat(firstKey.get()).isEqualTo(nextKey.get());
       assertThat(observed.get().at("/items/0/raw_values/0").asText()).isEqualTo("name");
@@ -161,9 +161,92 @@ class AnalysisHttpClientsTest {
       var budget = budget();
       assertThatThrownBy(() ->
               parser.parse(
-                  "return null;", List.of("value"), budget::beforeRequest, budget::remaining))
+                  "return null;",
+                  List.of("value"),
+                  budget::beforeRequest,
+                  budget::remainingWhileWaiting))
           .isInstanceOf(ParserUnavailable.class)
           .hasMessage("INVALID_PARSER_RESPONSE");
+    }
+  }
+
+  @Test
+  void keepsContentHeadersAndPaginationWhenReducingOversizedListEvidence() {
+    String html =
+        "<header>Campus navigation</header><main><section>"
+            + ("<article class=notice><header>Notice title</header><a href=/detail>Details</a>"
+                    + "a".repeat(700)
+                    + "</article>")
+                .repeat(105)
+            + "</section><footer><a rel=next href=/page/2>Next</a></footer></main>"
+            + "<footer>Campus directory</footer>";
+    String compact = AnalysisDom.compact(html, true);
+    assertThat(compact).doesNotContain("Campus navigation", "Campus directory");
+    var document = org.jsoup.Jsoup.parse(compact);
+    assertThat(document.select("main article.notice")).hasSize(3);
+    assertThat(document.select("article header").eachText()).containsOnly("Notice title");
+    assertThat(document.select("article a[href=/detail]")).hasSize(3);
+    assertThat(document.select("main footer a[rel=next]").attr("href")).isEqualTo("/page/2");
+  }
+
+  @Test
+  void sendsObservedDetailDomAndGetsOnlyTheRequestedFieldRules() throws Exception {
+    var observed = new AtomicReference<JsonNode>();
+    try (var server =
+        new Stub(exchange -> {
+          observed.set(read(exchange));
+          reply(
+              exchange,
+              200,
+              Map.of(
+                  "status",
+                  "completed",
+                  "output",
+                  List.of(
+                      Map.of(
+                          "type",
+                          "message",
+                          "content",
+                          List.of(
+                              Map.of(
+                                  "type",
+                                  "output_text",
+                                  "text",
+                                  """
+                                  {"fields":[{"field_id":"notice-body","selector":".content",
+                                    "extract":{"type":"TEXT","attribute":null},"parser_code":null}]}
+                                  """))))));
+        })) {
+      var provider =
+          new OpenAiCandidateGenerator(
+              HttpClient.newHttpClient(),
+              server.url(),
+              "fixture-key",
+              OpenAiCandidateGenerator.DEFAULT_MODEL);
+      var input =
+          new SourceCandidateGenerator.DetailInput(
+              "Collect notice bodies",
+              List.of(
+                  new SourceCandidateGenerator.DetailSample(
+                      "<header>Site menu</header><article><header>Notice heading</header>"
+                          + "<div class=content>Observed body</div></article><footer>Directory</footer>",
+                      List.of(
+                          new SourceCandidateGenerator.DetailTarget(
+                              "notice-body", "Body", "STRING", false, "Full notice text")))));
+      assertThat(provider.refineDetails(input, budget()))
+          .singleElement()
+          .satisfies(field -> {
+            assertThat(field.fieldId()).isEqualTo("notice-body");
+            assertThat(field.selector()).isEqualTo(".content");
+          });
+      var request = observed.get();
+      assertThat(request.at("/text/format/name").asText()).isEqualTo("detail_fields");
+      var evidence = JsonMapper.shared().readTree(request.path("input").asText());
+      assertThat(evidence.path("collection_purpose").asText()).isEqualTo("Collect notice bodies");
+      assertThat(evidence.at("/samples/0/fields/0/field_id").asText()).isEqualTo("notice-body");
+      assertThat(evidence.at("/samples/0/dom").asText())
+          .contains("Notice heading", "Observed body")
+          .doesNotContain("Site menu", "Directory");
     }
   }
 

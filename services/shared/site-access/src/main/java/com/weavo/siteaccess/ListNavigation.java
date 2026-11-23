@@ -5,6 +5,7 @@ import com.weavo.siteaccess.SiteAccess.PageSnapshot;
 import com.weavo.siteaccess.SiteAccessException.Kind;
 import com.weavo.siteaccess.rule.Navigation;
 import com.weavo.siteaccess.rule.Navigation.Pagination;
+import com.weavo.siteaccess.rule.Navigation.PaginationType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +48,15 @@ public final class ListNavigation {
   private boolean hasClickControl(HtmlScope document) {
     HtmlScope control = control(document);
     return control != null && !control.isDisabledControl();
+  }
+
+  public boolean hasDisabledNextControl(HtmlScope document) {
+    if (!List.of(PaginationType.NEXT_LINK, PaginationType.CLICK_NEXT, PaginationType.LOAD_MORE)
+        .contains(rule.type())) {
+      return false;
+    }
+    HtmlScope next = control(document);
+    return next != null && next.isDisabledControl();
   }
 
   public String nextUrl(HtmlScope document) {
