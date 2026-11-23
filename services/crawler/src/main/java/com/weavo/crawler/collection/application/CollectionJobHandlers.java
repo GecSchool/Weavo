@@ -7,6 +7,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.MessageErr
 import com.weavo.worker.application.AttemptContext;
 import com.weavo.worker.application.JobProcessor.Job;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /** Routes an accepted collection attempt to its execution-reason handler. */
@@ -19,12 +20,18 @@ public final class CollectionJobHandlers {
 
   public CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
       throws InterruptedException {
+    return execute(job, attempt, (project, fields, error) -> {});
+  }
+
+  public CollectionCompleted execute(
+      Job<CollectionExecute> job, AttemptContext attempt, IssueReporter reporter)
+      throws InterruptedException {
     var reason = ExecutionReason.valueOf(job.payload().executionReason());
     var handler = handlers.get(reason);
     if (handler == null) {
       throw new IllegalStateException("No collection handler for " + reason);
     }
-    return handler.execute(job, attempt);
+    return handler.execute(job, attempt, reporter);
   }
 
   public static CollectionJobHandlers forTesting() {
@@ -83,6 +90,18 @@ public final class CollectionJobHandlers {
   @FunctionalInterface
   public interface Handler {
     CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
+        throws InterruptedException;
+
+    default CollectionCompleted execute(
+        Job<CollectionExecute> job, AttemptContext attempt, IssueReporter reporter)
+        throws InterruptedException {
+      return execute(job, attempt);
+    }
+  }
+
+  @FunctionalInterface
+  public interface IssueReporter {
+    void report(String projectSourceId, List<String> fields, MessageError error)
         throws InterruptedException;
   }
 }

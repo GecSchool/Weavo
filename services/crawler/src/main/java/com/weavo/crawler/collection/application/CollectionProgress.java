@@ -25,6 +25,10 @@ final class CollectionProgress {
     return !projects.get(projectSourceId).finished;
   }
 
+  void stop(String projectSourceId) {
+    projects.get(projectSourceId).finished = true;
+  }
+
   void observe(Map<String, Map<String, Object>> values) {
     values.forEach((id, fields) -> projects.get(id).observe(fields));
   }
@@ -40,10 +44,6 @@ final class CollectionProgress {
 
   boolean hasCandidates(String projectSourceId) {
     return projects.get(projectSourceId).hasCandidates;
-  }
-
-  boolean hasCandidates() {
-    return projects.values().stream().anyMatch(project -> project.hasCandidates);
   }
 
   private static Map<String, Object> normalizeDatetimes(

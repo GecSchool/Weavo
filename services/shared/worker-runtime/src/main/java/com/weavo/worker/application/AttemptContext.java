@@ -15,18 +15,44 @@ public final class AttemptContext {
   private final Instant startedAt;
   private final Instant workDeadline;
   private final Instant executionDeadline;
+  private final NoticePublisher noticePublisher;
   private Instant leaseExpiresAt;
   private boolean awaitingConfirmation;
   private boolean cancelled;
 
   AttemptContext(
       Clock clock, UUID id, Duration workBudget, Duration completionGrace, Instant leaseExpiresAt) {
+    this(clock, id, workBudget, completionGrace, leaseExpiresAt, null);
+  }
+
+  AttemptContext(
+      Clock clock,
+      UUID id,
+      Duration workBudget,
+      Duration completionGrace,
+      Instant leaseExpiresAt,
+      NoticePublisher noticePublisher) {
     this.clock = clock;
+    this.noticePublisher = noticePublisher;
     this.id = id;
     this.startedAt = clock.instant();
     this.workDeadline = startedAt.plus(workBudget);
     this.executionDeadline = workDeadline.plus(completionGrace);
     this.leaseExpiresAt = leaseExpiresAt;
+  }
+
+  /** Publishes with the active attempt's lease guard and retry policy. */
+  public boolean publishNotice(String body) throws InterruptedException {
+    if (noticePublisher == null) {
+      return false;
+    }
+    noticePublisher.publish(this, body);
+    return true;
+  }
+
+  @FunctionalInterface
+  interface NoticePublisher {
+    void publish(AttemptContext attempt, String body) throws InterruptedException;
   }
 
   public UUID id() {
