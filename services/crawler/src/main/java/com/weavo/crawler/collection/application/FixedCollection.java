@@ -31,7 +31,7 @@ import java.util.concurrent.CancellationException;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
-/** Collects one configured list and its current-tab details for a full collection attempt. */
+/** Collects one configured list and its current-tab details for one collection attempt. */
 public final class FixedCollection implements CollectionJobHandlers.Handler {
   private final SiteAccess siteAccess;
   private final Function<WorkBudget, FieldValueProcessor> fields;
@@ -63,26 +63,18 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
   public CollectionCompleted execute(Job<CollectionExecute> job, AttemptContext attempt)
       throws InterruptedException {
     var request = job.payload();
-    if (request.projects().stream().anyMatch(project -> !project.collectionMode().equals("FULL"))) {
-      return result(
-          request,
-          attempt,
-          "TECHNICAL_FAILURE",
-          null,
-          null,
-          null,
-          error("TECHNICAL_FAILURE", "COLLECTION", "고정 수집 모드에서는 전체 수집만 지원합니다."));
-    }
-
     var budget =
         new WorkBudget(
             attempt.workDeadline(), attempt::isCancellationRequested, attempt::requireWorkAllowed);
     var rules = new FixedCollectionFields(request.projects(), fields.apply(budget));
     try (var snapshot = new CollectionSnapshot(bucket, job.id(), attempt)) {
-      var state = new CaptureState();
+      var state = new CaptureState(new CollectionProgress(request.projects()));
       String reason = "END_OF_LIST";
       try {
         collect(request, budget, rules, snapshot, state);
+        if (state.stoppedEarly) {
+          reason = "NO_CHANGE";
+        }
       } catch (SiteAccessException failure) {
         if (failure.kind() == Kind.CANCELLED) {
           throw new CancellationException("Fixed collection no longer owns this attempt");
@@ -92,8 +84,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
               request,
               attempt,
               stopReason(failure.kind(), state),
-              state.listCount,
-              null,
+              state,
+              false,
               null,
               accessError(failure.kind(), state));
         }
@@ -105,8 +97,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
             request,
             attempt,
             "TECHNICAL_FAILURE",
-            state.listCount,
-            null,
+            state,
+            false,
             null,
             error("TECHNICAL_FAILURE", "PARSER_CALL", "격리 파서의 응답을 확인하지 못했습니다."));
       }
@@ -115,8 +107,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
             request,
             attempt,
             "EMPTY_LIST",
-            0L,
-            null,
+            state,
+            false,
             null,
             new MessageError(
                 "EMPTY_LIST",
@@ -131,24 +123,23 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
             request,
             attempt,
             reason,
-            state.listCount,
-            null,
+            state,
+            false,
             null,
             error("TECHNICAL_FAILURE", state.stage, "수집 기한 안에 완료한 항목이 없습니다."));
       }
 
-      long validated = snapshot.itemCount();
       try {
-        var ref = snapshot.publish(request, store);
-        return result(request, attempt, reason, state.listCount, validated, ref, null);
+        var ref = state.progress.hasCandidates() ? snapshot.publish(request, store) : null;
+        return result(request, attempt, reason, state, true, ref, null);
       } catch (CollectionSnapshot.UploadFailed failure) {
         attempt.requireOwnership();
         return result(
             request,
             attempt,
             "TECHNICAL_FAILURE",
-            state.listCount,
-            validated,
+            state,
+            true,
             null,
             error("SNAPSHOT_WRITE_FAILED", "SNAPSHOT_WRITE", "수집 스냅샷을 저장하지 못했습니다."));
       }
@@ -236,7 +227,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         indices = movement.observeCumulativeList(items);
         unchanged = indices.isEmpty() ? unchanged + 1 : 0;
         if (unchanged == 2) {
-          return;
+          break;
         }
       } else {
         movement.observePage(items);
@@ -245,10 +236,26 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       state.listCount += indices.size();
       if (!indices.isEmpty()) {
         captureItems(
-            request, rules, budget, snapshot, state, page, items, indices, tab, browserList);
+            request,
+            rules,
+            budget,
+            snapshot,
+            state,
+            page,
+            items,
+            indices,
+            tab,
+            browserList,
+            cumulative);
+        if (state.stoppedEarly || (!cumulative && state.endSegment())) {
+          return;
+        }
       }
       state.stage = "LIST_NAVIGATION";
       page = movement.moveBrowser(tab, nav, browserList.document());
+    }
+    if (state.segmentRows > 0) {
+      state.endSegment();
     }
   }
 
@@ -278,7 +285,11 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
           current.items(),
           itemIndices(current.items()),
           tab,
-          browserList);
+          browserList,
+          false);
+      if (state.endSegment()) {
+        return;
+      }
       state.stage = "LIST_NAVIGATION";
       String next = movement.nextUrl(current.document());
       if (next == null) {
@@ -318,7 +329,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       List<HtmlScope> items,
       List<Integer> indices,
       BrowserTab tab,
-      BrowserList initialBrowserList) {
+      BrowserList initialBrowserList,
+      boolean cumulative) {
     String selector = request.navigation().itemSelector();
     BrowserList current = initialBrowserList;
     var originalRows = List.<HtmlScope>of();
@@ -333,10 +345,24 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
     for (int index : indices) {
       state.stage = "LIST_EXTRACTION";
       budget.check();
-      rules.validate(rules.listFields(), items.get(index), budget);
+      Map<String, Map<String, Object>> values = new LinkedHashMap<>();
+      for (var project : request.projects()) {
+        String id = project.projectSourceId();
+        if (state.progress.participates(id)) {
+          values.put(id, new LinkedHashMap<>());
+        }
+      }
+      rules.extract(rules.listFields(), items.get(index), budget, values);
       var details = new ArrayList<CollectionSnapshot.Detail>();
       Map<String, List<String>> directLinks = new LinkedHashMap<>();
       for (var entry : rules.detailGroups().entrySet()) {
+        var detailFields =
+            entry.getValue().stream()
+                .filter(field -> values.containsKey(field.projectSourceId()))
+                .toList();
+        if (detailFields.isEmpty()) {
+          continue;
+        }
         state.stage = "DETAIL_NAVIGATION";
         var rule = entry.getKey();
         var originalRow = originalRows.get(index);
@@ -344,8 +370,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         var browserItem = current.reselect(selector, index, originalRow, originalMarkup, rule);
         var detail = tab.openDetail(browserItem, rule);
         var page = detail.page();
-        rules.validate(entry.getValue(), HtmlScope.parse(page.html()), budget);
-        var consumers = FixedCollectionFields.consumers(entry.getValue());
+        rules.extract(detailFields, HtmlScope.parse(page.html()), budget, values);
+        var consumers = FixedCollectionFields.consumers(detailFields);
         details.add(snapshot.captureDetail(page, consumers));
         if (detail.directUrl() != null && !detail.directUrl().equals(list.url())) {
           for (var consumer : consumers) {
@@ -364,13 +390,14 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         current.reselect(selector, index, originalRow, originalMarkup, rule);
       }
       var urls =
-          request.projects().stream()
-              .map(project ->
-                  new CollectionSnapshot.SourceUrl(
-                      project.projectSourceId(),
-                      uniqueLink(directLinks.get(project.projectSourceId()))))
+          values.keySet().stream()
+              .map(id -> new CollectionSnapshot.SourceUrl(id, uniqueLink(directLinks.get(id))))
               .toList();
       snapshot.addItem(index, urls, details);
+      state.progress.observe(values);
+      if (cumulative && ++state.segmentRows == 5 && state.endSegment()) {
+        return;
+      }
     }
   }
 
@@ -462,8 +489,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
       CollectionExecute request,
       AttemptContext attempt,
       String stopReason,
-      Long listCount,
-      Long extracted,
+      CaptureState state,
+      boolean measured,
       ObjectReference snapshot,
       MessageError error) {
     String status = error == null ? "SUCCEEDED" : "FAILED";
@@ -476,8 +503,8 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
                     project.schemaVersion(),
                     project.connectorRevision(),
                     status,
-                    snapshot != null,
-                    extracted,
+                    snapshot != null && state.progress.hasCandidates(project.projectSourceId()),
+                    measured ? state.progress.count(project.projectSourceId()) : null,
                     error))
             .toList();
     return new CollectionCompleted(
@@ -488,7 +515,7 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
         stopReason,
         attempt.startedAt().toString(),
         attempt.now().toString(),
-        listCount,
+        state.listCount,
         snapshot,
         projects,
         error);
@@ -499,7 +526,20 @@ public final class FixedCollection implements CollectionJobHandlers.Handler {
   }
 
   private static final class CaptureState {
+    final CollectionProgress progress;
     String stage = "LIST_ACCESS";
     Long listCount;
+    int segmentRows;
+    boolean stoppedEarly;
+
+    CaptureState(CollectionProgress progress) {
+      this.progress = progress;
+    }
+
+    boolean endSegment() {
+      segmentRows = 0;
+      stoppedEarly = progress.endSegment();
+      return stoppedEarly;
+    }
   }
 }

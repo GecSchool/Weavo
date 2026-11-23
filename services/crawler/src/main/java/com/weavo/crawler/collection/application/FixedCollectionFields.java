@@ -55,8 +55,16 @@ final class FixedCollectionFields {
     return detailGroups;
   }
 
-  void validate(List<Field> fields, HtmlScope scope, WorkBudget budget) {
+  void extract(
+      List<Field> fields,
+      HtmlScope scope,
+      WorkBudget budget,
+      Map<String, Map<String, Object>> values) {
     for (Field field : fields) {
+      var target = values.get(field.projectSourceId());
+      if (target == null) {
+        continue;
+      }
       budget.check();
       var connector = field.connector();
       FieldExtractor.Result extraction;
@@ -89,6 +97,7 @@ final class FixedCollectionFields {
                 false,
                 null));
       }
+      target.put(connector.fieldId(), result.value());
     }
   }
 

@@ -9,6 +9,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.weavo.crawler.collection.application.FixedCollection;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionExecute;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.LatestRecord;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.Schema;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.SchemaField;
 import com.weavo.extraction.FieldExtractor;
@@ -372,6 +373,157 @@ class HttpListNavigationTest {
                   .path("list_snapshots"))
           .hasSize(1);
     }
+  }
+
+  @Test
+  void twoOfThreeDistinctOccurrencesKeepEntireNextPageAndItsNewValues() throws Exception {
+    try (var site =
+        new TestSite(
+            Map.of(
+                "/list", page("같은 값", "") + page("다른 기준", NEXT),
+                "/list?page=2",
+                    page("같은 값", "") + page("새 값", "<a class=next href='?page=3'>다음</a>")))) {
+      var base = job(site.url("/list"), nextLink());
+      var full = base.payload().projects().getFirst();
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collector(site, stored)
+              .execute(withProjects(base, incremental(full, "같은 값", "같은 값", "다른 기준")), attempt());
+
+      assertThat(result.stopReason()).isEqualTo("NO_CHANGE");
+      assertThat(site.requests).containsExactly("/list", "/list?page=2");
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(4);
+      assertThat(result.projectResults().getFirst().canIngest()).isTrue();
+      var manifest = JsonMapper.shared().readTree(stored.get(result.snapshotRef().key()));
+      assertThat(manifest.path("list_snapshots").get(1).path("items")).hasSize(2);
+    }
+  }
+
+  @Test
+  void normalizesStoredDatetimeBeforeComparison() throws Exception {
+    try (var site =
+        new TestSite(
+            Map.of(
+                "/list", page("2026-11-23T00:00:00Z", NEXT),
+                "/list?page=2", page("2026-11-24T00:00:00Z", "")))) {
+      var base = job(site.url("/list"), nextLink());
+      var first = base.payload().projects().getFirst();
+      var project =
+          new CollectionProject(
+              first.projectId(),
+              first.projectSourceId(),
+              1L,
+              1L,
+              "INCREMENTAL",
+              new Schema(
+                  List.of(
+                      new SchemaField(
+                          FIELD_ID, "date", null, null, null, "datetime", false, null))),
+              first.fieldConnectors(),
+              List.of(new LatestRecord(Map.of(FIELD_ID, "2026-11-23T09:00:00+09:00"))));
+      var stored = new HashMap<String, byte[]>();
+      var result = collector(site, stored).execute(withProjects(base, project), attempt());
+      assertThat(result.stopReason())
+          .withFailMessage(
+              "actual=%s, visited=%s, candidate=%s",
+              result.stopReason(), site.requests, result.projectResults().getFirst().canIngest())
+          .isEqualTo("NO_CHANGE");
+      assertThat(site.requests).containsExactly("/list");
+      assertThat(result.snapshotRef()).isNull();
+    }
+  }
+
+  @Test
+  void repeatedKnownValuesDoNotBecomeIngestionCandidates() throws Exception {
+    try (var site =
+        new TestSite(Map.of("/list", page("A", "") + page("B", "") + page("A", NEXT)))) {
+      var base = job(site.url("/list"), nextLink());
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collector(site, stored)
+              .execute(
+                  withProjects(base, incremental(base.payload().projects().getFirst(), "A", "B")),
+                  attempt());
+
+      assertThat(result.stopReason()).isEqualTo("NO_CHANGE");
+      assertThat(result.snapshotRef()).isNull();
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(3);
+      assertThat(result.projectResults().getFirst().canIngest()).isFalse();
+      assertThat(site.requests).containsExactly("/list");
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  @Test
+  void fullProjectContinuesAfterIncrementalProjectFinishes() throws Exception {
+    try (var site = new TestSite(Map.of("/list", page("A", NEXT), "/list?page=2", page("B", "")))) {
+      var base = job(site.url("/list"), nextLink());
+      var full = base.payload().projects().getFirst();
+      var other = job(site.url("/list"), nextLink()).payload().projects().getFirst();
+      var incremental = incremental(other, "A");
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collector(site, stored).execute(withProjects(base, incremental, full), attempt());
+
+      assertThat(result.stopReason()).isEqualTo("END_OF_LIST");
+      assertThat(result.projectResults())
+          .extracting(project -> project.normalExtractedRecordCount())
+          .containsExactly(1L, 2L);
+      assertThat(result.projectResults())
+          .extracting(project -> project.canIngest())
+          .containsExactly(false, true);
+      var manifest = JsonMapper.shared().readTree(stored.get(result.snapshotRef().key()));
+      var lastUrls =
+          manifest.path("list_snapshots").get(1).path("items").get(0).path("source_urls");
+      assertThat(lastUrls).hasSize(1);
+      assertThat(lastUrls.get(0).path("project_source_id").asString())
+          .isEqualTo(full.projectSourceId());
+    }
+  }
+
+  @Test
+  void reportsEndOfListWhenTheRequestedExtraPageDoesNotExist() throws Exception {
+    try (var site = new TestSite(Map.of("/list", page("A", "") + page("B", "")))) {
+      var base = job(site.url("/list"), nextLink());
+      var result =
+          collector(site, new HashMap<>())
+              .execute(
+                  withProjects(
+                      base, incremental(base.payload().projects().getFirst(), "A", "B", "C")),
+                  attempt());
+      assertThat(result.stopReason()).isEqualTo("END_OF_LIST");
+      assertThat(result.snapshotRef()).isNull();
+    }
+  }
+
+  private static CollectionProject incremental(CollectionProject base, String... values) {
+    return new CollectionProject(
+        base.projectId(),
+        base.projectSourceId(),
+        base.schemaVersion(),
+        base.connectorRevision(),
+        "INCREMENTAL",
+        base.schema(),
+        base.fieldConnectors(),
+        java.util.Arrays.stream(values)
+            .map(value -> new LatestRecord(Map.of(FIELD_ID, value)))
+            .toList());
+  }
+
+  private static Job<CollectionExecute> withProjects(
+      Job<CollectionExecute> base, CollectionProject... targets) {
+    var payload = base.payload();
+    return new Job<>(
+        base.id(),
+        base.expiresAt(),
+        base.workBudget(),
+        new CollectionExecute(
+            payload.sourceId(),
+            "SCHEDULED",
+            payload.maxDurationSeconds(),
+            payload.navigationRevision(),
+            payload.navigation(),
+            List.of(targets)));
   }
 
   private static FixedCollection collector(TestSite site, Map<String, byte[]> stored) {

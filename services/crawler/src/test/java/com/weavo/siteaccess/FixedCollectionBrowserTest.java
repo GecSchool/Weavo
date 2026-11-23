@@ -16,6 +16,7 @@ import com.weavo.crawler.collection.infrastructure.messaging.Messages.Collection
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProject;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.CollectionProjectResult;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.JobIssueDetected;
+import com.weavo.crawler.collection.infrastructure.messaging.Messages.LatestRecord;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.Schema;
 import com.weavo.crawler.collection.infrastructure.messaging.Messages.SchemaField;
 import com.weavo.extraction.FieldExtractor;
@@ -764,6 +765,73 @@ class FixedCollectionBrowserTest {
   private static Navigation browserList(String address, Pagination rule) {
     return new Navigation(
         address, List.of(), new ListAccess(AccessMethod.BROWSER, ".ready"), "article", rule);
+  }
+
+  @Test
+  void cumulativeSegmentsSpanDomRepaintsAndKeepTheFinalShortSegment() throws Exception {
+    String list =
+        """
+        <main class=ready>
+          <article><h2>A</h2><a href=/x/a>A</a></article>
+          <article><h2>B</h2><a href=/x/b>B</a></article>
+          <article><h2>N1</h2><a href=/x/1>1</a></article>
+        </main>
+        <button class=next>더 보기</button>
+        <script>
+          let n = 0;
+          document.querySelector('.next').onclick = event => {
+            document.querySelector('article').dataset.view = 'seen';
+            for (let i = 0; i < 2; i++) {
+              const id = ++n;
+              document.querySelector('main').insertAdjacentHTML(
+                'beforeend', '<article><h2>새 값 ' + id + '</h2><a href=/y/' + id + '>Link</a></article>');
+            }
+            if (n === 4) event.target.disabled = true;
+          };
+        </script>
+        """;
+    try (var site = new TestSite(list)) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".ready", null, null, null, null);
+      var full = listOnlyJob(browserList(site.url("/list"), rule));
+      var request = full.payload();
+      var source = request.projects().getFirst();
+      var incremental =
+          new CollectionProject(
+              source.projectId(),
+              source.projectSourceId(),
+              source.schemaVersion(),
+              source.connectorRevision(),
+              "INCREMENTAL",
+              source.schema(),
+              source.fieldConnectors(),
+              List.of(
+                  new LatestRecord(Map.of(TITLE, "A")),
+                  new LatestRecord(Map.of(TITLE, "B")),
+                  new LatestRecord(Map.of(TITLE, "C"))));
+      var job =
+          new Job<>(
+              full.id(),
+              full.expiresAt(),
+              full.workBudget(),
+              new CollectionExecute(
+                  request.sourceId(),
+                  "SCHEDULED",
+                  request.maxDurationSeconds(),
+                  request.navigationRevision(),
+                  request.navigation(),
+                  List.of(incremental)));
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(job, attempt(Duration.ofSeconds(15)));
+
+      assertThat(result.stopReason()).withFailMessage("%s", result.error()).isEqualTo("NO_CHANGE");
+      assertThat(result.projectResults().getFirst().normalExtractedRecordCount()).isEqualTo(7L);
+      var pages = read(stored.get(result.snapshotRef().key())).path("list_snapshots");
+      assertThat(pages.get(2).path("items").get(0).path("item_index").asInt()).isEqualTo(5);
+      assertThat(pages.get(2).path("items").get(1).path("item_index").asInt()).isEqualTo(6);
+    }
   }
 
   private static Job<CollectionExecute> listOnlyJob(Navigation nav) {
