@@ -12,6 +12,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.microsoft.playwright.CDPSession;
 import com.microsoft.playwright.ElementHandle;
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.TimeoutError;
@@ -58,14 +59,21 @@ public final class BrowserTab implements AutoCloseable {
           "alt-svc");
   private static final String CAPTURE_HTML =
       """
-      ({ selector, limit }) => {
+      ({ selector, limit, progress }) => {
         const title = document.title.toLowerCase();
         const challenge = document.querySelector(
             'form#challenge-form, form[action^="/sorry/"], .h-captcha, .g-recaptcha, .cf-turnstile');
         if (challenge && /just a moment|verify you are human|captcha verification|security check/.test(title)) {
           return { blocked: true };
         }
-        if (selector && !document.querySelector(selector)) return null;
+        const ready = selector ? document.querySelector(selector) : null;
+        if (selector && !ready) return null;
+        if (progress && (ready?.outerHTML ?? "") === progress.marker) {
+          const rows = Array.from(document.querySelectorAll(progress.selector), item => item.outerHTML);
+          if (rows.length === progress.rows.length && rows.every((row, i) => row === progress.rows[i])) {
+            return null;
+          }
+        }
         const html = document.documentElement?.outerHTML;
         if (html === undefined) return null;
         return new TextEncoder().encode(html).length > limit ? { oversized: true } : { html };
@@ -174,6 +182,78 @@ public final class BrowserTab implements AutoCloseable {
         .page();
   }
 
+  /** Runs an approved list click, keeping same-document network requests under the usual guard. */
+  public SiteAccess.PageSnapshot clickList(
+      String selector, String waitSelector, String itemSelector) {
+    return listAction(
+        () ->
+            page.locator("css=" + selector)
+                .click(new Locator.ClickOptions().setTimeout(navigation.timeoutMillis())),
+        waitSelector,
+        itemSelector);
+  }
+
+  /** Scrolls the document or the unique configured container towards its current end. */
+  public SiteAccess.PageSnapshot scrollList(
+      String container, String waitSelector, String itemSelector) {
+    return listAction(
+        () -> {
+          boolean found =
+              Boolean.TRUE.equals(
+                  page.evaluate(
+                      """
+                      selector => {
+                        const matches = selector ? document.querySelectorAll(selector) : [];
+                        if (selector && matches.length !== 1) return false;
+                        const target = selector ? matches[0] : document.scrollingElement;
+                        if (!target) return false;
+                        target.scrollTop = target.scrollHeight;
+                        return true;
+                      }
+                      """,
+                      container));
+          if (!found) {
+            throw new SiteAccessException(
+                BROWSER_FAILED, "Scroll container could not be identified");
+          }
+        },
+        waitSelector,
+        itemSelector);
+  }
+
+  /** Confirms the list-level readiness rule after applying initial actions. */
+  public SiteAccess.PageSnapshot awaitList(String waitSelector) {
+    return move(() -> null, waitSelector, true, null).page();
+  }
+
+  private SiteAccess.PageSnapshot listAction(
+      Runnable action, String waitSelector, String itemSelector) {
+    budget.check();
+    Map<String, Object> progress = null;
+    if (itemSelector != null) {
+      try {
+        var marker =
+            (String)
+                page.evaluate(
+                    "selector => selector ? document.querySelector(selector)?.outerHTML ?? '' : ''",
+                    waitSelector);
+        progress =
+            Map.of("selector", itemSelector, "rows", itemHtml(itemSelector), "marker", marker);
+      } catch (PlaywrightException error) {
+        throw new SiteAccessException(BROWSER_FAILED, "Could not inspect a list action", error);
+      }
+    }
+    return move(
+            () -> {
+              action.run();
+              return null;
+            },
+            waitSelector,
+            true,
+            progress)
+        .page();
+  }
+
   /** Uses the browser's CSS engine and document order to check the captured list selection. */
   public List<String> itemHtml(String selector) {
     budget.check();
@@ -247,16 +327,31 @@ public final class BrowserTab implements AutoCloseable {
   }
 
   private DetailSnapshot move(Supplier<URI> action, String waitSelector) {
+    return move(action, waitSelector, false, null);
+  }
+
+  private DetailSnapshot move(
+      Supplier<URI> action,
+      String waitSelector,
+      boolean existingDocument,
+      Map<String, Object> progress) {
     navigation = budget.cap(BrowserSession.PAGE_TIMEOUT, BROWSER_TIMEOUT);
-    documentUrl = null;
     navigationFailure = null;
     try {
+      documentUrl = existingDocument ? PublicUrls.parse(page.url()) : null;
       URI directUrl = action.get();
       waitUntil(timeout ->
           page.waitForLoadState(
               LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(timeout)));
-      String html = captureHtml(waitSelector);
-      ensureNavigation();
+      String html = captureHtml(waitSelector, progress);
+      if (progress == null) {
+        ensureNavigation();
+      } else {
+        if (navigationFailure != null) {
+          throw navigationFailure;
+        }
+        budget.check();
+      }
       if (SiteSession.isChallengePage(html)) {
         throw new SiteAccessException(ACCESS_BLOCKED, "The rendered page is a challenge");
       }
@@ -422,13 +517,34 @@ public final class BrowserTab implements AutoCloseable {
     }
   }
 
-  private String captureHtml(String waitSelector) {
-    var arguments =
+  private String captureHtml(String waitSelector, Map<String, Object> progress) {
+    Map<String, Object> ready =
         Map.of(
             "selector",
             waitSelector == null ? "" : waitSelector,
             "limit",
             HttpTransport.HTML_LIMIT);
+    Map<String, Object> arguments = new HashMap<>(ready);
+    if (progress != null) {
+      arguments.put("progress", progress);
+    }
+    try {
+      return waitForHtml(arguments);
+    } catch (SiteAccessException failure) {
+      if (progress == null || failure.kind() != BROWSER_TIMEOUT || navigationFailure != null) {
+        throw failure;
+      }
+      // A ready but unchanged list is a real observation, not a failed wait.
+      budget.check();
+      var observed = (Map<?, ?>) page.evaluate(CAPTURE_HTML, ready);
+      if (observed == null) {
+        throw failure;
+      }
+      return readDom(observed);
+    }
+  }
+
+  private String waitForHtml(Map<String, Object> arguments) {
     while (true) {
       ensureNavigation();
       try {

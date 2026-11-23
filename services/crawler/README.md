@@ -24,7 +24,7 @@ WEAVO_ENV=local WEAVO_AWS_ENDPOINT_URL=http://localhost:4566 ./gradlew bootRun -
 
 ## 고정 규칙 수집 워커 실행
 
-`worker` 프로필은 `FULL` 대상의 단일 목록(`pagination.type=NONE`, 초기 동작 없음)을 처리합니다. 목록은 HTTP 또는 브라우저로 열고, 상세는 브라우저 현재 탭에서 링크 또는 클릭으로 열어 기록한 뒤 목록으로 복귀합니다. 입력 설정에는 승인된 스키마, 목록 및 필드별 추출·이동 규칙이 필요합니다. 페이지네이션, 새 탭·모달, 증분 비교는 후속 이슈에서 연결합니다.
+`worker` 프로필은 승인된 스키마와 목록·필드별 규칙을 전달받아 `FULL` 수집을 실행합니다. HTTP 목록은 `NONE`, `NEXT_LINK`, `URL_TEMPLATE`을 지원합니다. 브라우저 목록은 초기 클릭과 위 세 방식, `CLICK_NEXT`, `LOAD_MORE`, `SCROLL`을 지원합니다. 상세는 브라우저 현재 탭에서 링크 또는 클릭으로 열고 목록으로 복귀합니다. 새 탭·모달과 증분 비교는 후속 이슈에서 연결합니다.
 
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=worker'

@@ -74,12 +74,31 @@ public final class HtmlScope {
 
   /** Keeps the identity of a captured item without retaining its HTML across pages. */
   public String markupFingerprint() {
+    return fingerprint(root.outerHtml(), root.select("a[href]").eachAttr("abs:href"));
+  }
+
+  /** Retains a linked item's identity when a cumulative list repaints its presentation. */
+  public String cumulativeFingerprint() {
+    var links =
+        root.select("a[href]").stream()
+            .filter(
+                link -> !link.attr("href").isBlank() && !link.attr("href").strip().startsWith("#"))
+            .map(link -> link.absUrl("href"))
+            .filter(url ->
+                url.regionMatches(true, 0, "http://", 0, 7)
+                    || url.regionMatches(true, 0, "https://", 0, 8))
+            .distinct()
+            .toList();
+    return links.isEmpty() ? markupFingerprint() : fingerprint(root.text(), links);
+  }
+
+  private static String fingerprint(String content, List<String> links) {
     try {
       var digest = MessageDigest.getInstance("SHA-256");
-      digest.update(root.outerHtml().getBytes(StandardCharsets.UTF_8));
-      for (Element link : root.select("a[href]")) {
+      digest.update(content.getBytes(StandardCharsets.UTF_8));
+      for (String link : links) {
         digest.update((byte) 0);
-        digest.update(link.absUrl("href").getBytes(StandardCharsets.UTF_8));
+        digest.update(link.getBytes(StandardCharsets.UTF_8));
       }
       return HexFormat.of().formatHex(digest.digest());
     } catch (NoSuchAlgorithmException impossible) {

@@ -53,8 +53,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -509,6 +511,306 @@ class FixedCollectionBrowserTest {
     }
   }
 
+  @Test
+  void appliesInitialClickThenNavigatesInTheSameDocument() throws Exception {
+    String first =
+        """
+        <button class=initial onclick="document.querySelector('main').hidden=false;
+          document.querySelector('main').className='ready'; this.remove()">목록</button>
+        <main hidden><article><h2>첫 번째</h2></article>
+        <button class=next onclick="document.querySelector('h2').textContent='두 번째'; this.disabled=true">다음</button>
+        </main>
+        """;
+    try (var site = new TestSite(first)) {
+      var navigation =
+          new Navigation(
+              site.url("/list"),
+              List.of(
+                  new Navigation.InitialAction(Navigation.ActionType.CLICK, ".initial", ".ready")),
+              new ListAccess(AccessMethod.BROWSER, ".ready"),
+              "article",
+              new Pagination(
+                  PaginationType.CLICK_NEXT, ".next", null, ".ready", null, null, null, null));
+      var stored = new HashMap<String, byte[]>();
+      assertBrowserLists(site, navigation, stored, "첫 번째", "두 번째");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void rendersBothPagesForUrlBasedBrowserRules(boolean template) throws Exception {
+    try (var site =
+        new TestSite(
+            "",
+            Map.of(
+                "/list?page=1", dynamicScreenshot("첫 번째", "?page=2"),
+                "/list?page=2", dynamicScreenshot("두 번째", null),
+                "/list?page=3", "<main class=ready></main>"))) {
+      var rule =
+          template
+              ? new Pagination(
+                  PaginationType.URL_TEMPLATE,
+                  null,
+                  null,
+                  ".ready",
+                  site.url("/list?page={value}"),
+                  1,
+                  1,
+                  null)
+              : new Pagination(
+                  PaginationType.NEXT_LINK, ".next", "href", ".ready", null, null, null, null);
+      var navigation = browserList(site.url("/list?page=1"), rule);
+      assertBrowserLists(site, navigation, new HashMap<>(), "첫 번째", "두 번째");
+    }
+  }
+
+  @Test
+  void loadMoreWaitsForTheActualUpdateAndStopsAfterTwoEmptyActions() throws Exception {
+    String first =
+        """
+        <main class=ready><article><h2>첫 글</h2><a href=/detail/1>본문</a></article></main>
+        <button class=next>더 보기</button>
+        <output class=done data-count="0"></output>
+        <script>
+          let run = 0;
+          document.querySelector('button').onclick = async () => {
+            const step = ++run;
+            await fetch('/tick?step=' + step);
+            if (step === 1) {
+              document.querySelector('article').dataset.view = 'seen';
+              document.querySelector('main').insertAdjacentHTML('beforeend', '<article><h2>둘째 글</h2><a href=/detail/2>본문</a></article>');
+            }
+            document.querySelector('.done').dataset.count = String(step);
+          }
+        </script>
+        """;
+    try (var site =
+        new TestSite(
+            first, Map.of("/tick?step=1", "ok", "/tick?step=2", "ok", "/tick?step=3", "ok"))) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".done", null, null, null, null);
+      var stored = new HashMap<String, byte[]>();
+      var lists =
+          assertBrowserLists(site, browserList(site.url("/list"), rule), stored, "첫 글", "둘째 글");
+      assertThat(lists.get(1).path("items").get(0).path("item_index").asInt()).isEqualTo(1);
+      assertThat(site.requests)
+          .filteredOn(url -> url.startsWith("/tick"))
+          .containsExactly("/tick?step=1", "/tick?step=2", "/tick?step=3");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void scrollsTheDocumentOrAConfiguredContainer(boolean container) throws Exception {
+    String layout =
+        """
+        <main class=ready><section id=scroller style="%s">
+          <article><h2>첫 글</h2></article><div style="height:1200px"></div></section>
+          <output class=done data-count="0"></output></main>
+        <script>
+          let run = 0;
+          const content = document.querySelector('#scroller');
+          const scrollTarget = %s;
+          scrollTarget.addEventListener('scroll', () => {
+            if (++run === 1) {
+              content.insertAdjacentHTML('beforeend','<article><h2>둘째 글</h2></article>');
+            }
+            content.insertAdjacentHTML('beforeend','<div style="height:600px"></div>');
+            document.querySelector('.done').dataset.count = String(run);
+          });
+        </script>
+        """
+            .formatted(
+                container ? "height:120px;overflow:auto" : "", container ? "content" : "window");
+    try (var site = new TestSite(layout)) {
+      var rule =
+          new Pagination(
+              PaginationType.SCROLL,
+              null,
+              null,
+              ".done",
+              null,
+              null,
+              null,
+              container ? "#scroller" : null);
+      var lists =
+          assertBrowserLists(
+              site, browserList(site.url("/list"), rule), new HashMap<>(), "첫 글", "둘째 글");
+      assertThat(lists.get(1).path("items").get(0).path("item_index").asInt()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void reportsARepeatedClickPageInsteadOfPublishingTheRepeatedRows() throws Exception {
+    String first =
+        """
+        <main class=ready><article><h2>첫 글</h2></article></main>
+        <button class=next onclick="this.dataset.count=(Number(this.dataset.count??0)+1);
+          document.querySelector('h2').textContent=this.dataset.count==='1'?'둘째 글':'첫 글'">다음</button>
+        """;
+    try (var site = new TestSite(first)) {
+      var rule =
+          new Pagination(PaginationType.CLICK_NEXT, ".next", null, ".next", null, null, null, null);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  listOnlyJob(browserList(site.url("/list"), rule)),
+                  attempt(Duration.ofSeconds(10)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  @Test
+  void missingScrollContainerReportsNavigationFailure() throws Exception {
+    try (var site = new TestSite("<main class=ready><article><h2>첫 글</h2></article></main>")) {
+      var rule =
+          new Pagination(PaginationType.SCROLL, null, null, ".ready", null, null, null, ".missing");
+      var result =
+          collection(site.access(), (key, type, bytes) -> {})
+              .execute(
+                  listOnlyJob(browserList(site.url("/list"), rule)),
+                  attempt(Duration.ofSeconds(10)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(result.snapshotRef()).isNull();
+    }
+  }
+
+  @Test
+  void stopsAWaitingBrowserActionAtTheRunDeadlineAndKeepsTheFirstList() throws Exception {
+    try (var site =
+        new TestSite(
+            """
+            <main class=ready><article><h2>첫 글</h2></article></main>
+            <button class=next onclick="this.disabled=true">더 보기</button>
+            """)) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".never", null, null, null, null);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  listOnlyJob(browserList(site.url("/list"), rule)),
+                  attempt(Duration.ofSeconds(3)));
+      assertThat(result.stopReason()).isEqualTo("TIME_LIMIT");
+      assertThat(result.status()).isEqualTo("SUCCEEDED");
+      assertThat(read(stored.get(result.snapshotRef().key())).path("list_snapshots")).hasSize(1);
+    }
+  }
+
+  @Test
+  void missingReadinessSelectorIsNotCountedAsAnUnchangedList() throws Exception {
+    try (var site =
+        new TestSite(
+            """
+            <main class=ready><article><h2>첫 글</h2></article></main>
+            <button class=next onclick="this.dataset.clicked=true">더 보기</button>
+            """)) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".never", null, null, null, null);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  listOnlyJob(browserList(site.url("/list"), rule)),
+                  attempt(Duration.ofSeconds(40)));
+      assertThat(result.stopReason()).isEqualTo("NAVIGATION_FAILED");
+      assertThat(result.error().details().get("reason")).isEqualTo("BROWSER_TIMEOUT");
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  @Test
+  void blocksASameOriginDataRequestTriggeredByTheListAction() throws Exception {
+    try (var site =
+        new TestSite(
+            """
+            <main class=ready><article><h2>첫 글</h2></article></main>
+            <button class=next onclick="fetch('/blocked').catch(() => {
+              document.querySelector('h2').textContent='차단 뒤 대체값'
+            })">더 보기</button>
+            """)) {
+      var rule =
+          new Pagination(PaginationType.LOAD_MORE, ".next", null, ".ready", null, null, null, null);
+      var stored = new HashMap<String, byte[]>();
+      var result =
+          collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+              .execute(
+                  listOnlyJob(browserList(site.url("/list"), rule)),
+                  attempt(Duration.ofSeconds(10)));
+      assertThat(site.requests).contains("/blocked");
+      assertThat(result.stopReason()).isEqualTo("ACCESS_BLOCKED");
+      assertThat(stored).isEmpty();
+    }
+  }
+
+  private static String dynamicScreenshot(String title, String next) {
+    String link = next == null ? "" : "<a class=next href='" + next + "'>다음</a>";
+    return """
+    <main></main>
+    <script>
+      setTimeout(() => {
+        document.querySelector('main').innerHTML = %s;
+        document.querySelector('main').className = 'ready';
+      }, 25);
+    </script>
+    """
+        .formatted(
+            JsonMapper.shared()
+                .writeValueAsString("<article><h2>" + title + "</h2></article>" + link));
+  }
+
+  private static Navigation browserList(String address, Pagination rule) {
+    return new Navigation(
+        address, List.of(), new ListAccess(AccessMethod.BROWSER, ".ready"), "article", rule);
+  }
+
+  private static Job<CollectionExecute> listOnlyJob(Navigation nav) {
+    var original = job(nav.listUrl(), AccessMethod.BROWSER, OpenType.LINK);
+    var first = original.payload().projects().getFirst();
+    var project =
+        new CollectionProject(
+            first.projectId(),
+            first.projectSourceId(),
+            first.schemaVersion(),
+            first.connectorRevision(),
+            "FULL",
+            new Schema(List.of(first.schema().fields().getFirst())),
+            List.of(first.fieldConnectors().getFirst()),
+            List.of());
+    var request =
+        new CollectionExecute(
+            original.payload().sourceId(), "INITIAL", 20, 4L, nav, List.of(project));
+    return new Job<>(original.id(), original.expiresAt(), original.workBudget(), request);
+  }
+
+  private static JsonNode assertBrowserLists(
+      TestSite site, Navigation nav, Map<String, byte[]> stored, String... expected)
+      throws Exception {
+    var result =
+        collection(site.access(), (key, type, bytes) -> stored.put(key, bytes))
+            .execute(listOnlyJob(nav), attempt(Duration.ofSeconds(15)));
+    assertThat(result.status()).isEqualTo("SUCCEEDED");
+    assertThat(result.stopReason()).isEqualTo("END_OF_LIST");
+    assertThat(result.listItemCount()).isEqualTo(expected.length);
+    var lists = read(stored.get(result.snapshotRef().key())).path("list_snapshots");
+    var titles = new ArrayList<String>();
+    for (var list : lists) {
+      var document = HtmlScope.parse(html(stored.get(key(list))));
+      for (var item : list.path("items")) {
+        assertThat(item.path("sequence_index").asInt()).isEqualTo(titles.size());
+        titles.add(
+            text(
+                document.selectItem(
+                    list.path("item_selector").asString(), item.path("item_index").asInt()),
+                "h2"));
+      }
+    }
+    assertThat(titles).containsExactly(expected);
+    return lists;
+  }
+
   private static byte[] s3Bytes(S3Client s3, String key) {
     return s3.getObjectAsBytes(request -> request.bucket(BUCKET).key(key)).asByteArray();
   }
@@ -605,6 +907,7 @@ class FixedCollectionBrowserTest {
   private static final class TestSite implements AutoCloseable {
     private final HttpServer server;
     private final InetAddress local;
+    private final List<String> requests = new CopyOnWriteArrayList<>();
     private final AtomicInteger detailRequests = new AtomicInteger();
     private volatile boolean reorderAfterDetail;
     private volatile boolean detailReplacesUrl;
@@ -613,6 +916,10 @@ class FixedCollectionBrowserTest {
     private volatile boolean robotsDenied;
 
     TestSite(String list) throws IOException {
+      this(list, Map.of());
+    }
+
+    TestSite(String list, Map<String, String> pages) throws IOException {
       local = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
       server = HttpServer.create(new InetSocketAddress(local, 0), 0);
       server.createContext(
@@ -631,6 +938,12 @@ class FixedCollectionBrowserTest {
                 }
                 return;
               }
+              String requested = exchange.getRequestURI().toString();
+              requests.add(requested);
+              if (requested.equals("/blocked")) {
+                exchange.sendResponseHeaders(403, -1);
+                return;
+              }
               exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
               exchange.getResponseHeaders().set("Cache-Control", "no-store");
               final String body;
@@ -647,7 +960,7 @@ class FixedCollectionBrowserTest {
                                 + "');</script>"
                             : "");
               } else {
-                body = listResponse(list);
+                body = pages.getOrDefault(requested, listResponse(list));
               }
               byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
               exchange.sendResponseHeaders(200, bytes.length);

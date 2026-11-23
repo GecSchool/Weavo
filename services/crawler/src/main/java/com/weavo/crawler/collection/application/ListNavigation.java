@@ -4,14 +4,18 @@ import com.weavo.crawler.collection.domain.rule.Navigation.Pagination;
 import com.weavo.extraction.HtmlScope;
 import com.weavo.siteaccess.SiteAccessException;
 import com.weavo.siteaccess.SiteAccessException.Kind;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Advances URL-based rules and rejects a repeated set of list items. */
 final class ListNavigation {
   private final Pagination rule;
   private final Set<List<String>> visited = new HashSet<>();
+  private final Map<String, Integer> capturedOccurrences = new HashMap<>();
   private long pageOffset;
 
   ListNavigation(Pagination rule) {
@@ -22,6 +26,26 @@ final class ListNavigation {
     if (!visited.add(items.stream().map(HtmlScope::markupFingerprint).sorted().toList())) {
       throw failure("List navigation did not reach a new set of items");
     }
+  }
+
+  List<Integer> observeCumulativeList(List<HtmlScope> items) {
+    var occurrences = new HashMap<String, Integer>();
+    var indices = new ArrayList<Integer>();
+    for (int index = 0; index < items.size(); index++) {
+      String key = items.get(index).cumulativeFingerprint();
+      int occurrence = occurrences.merge(key, 1, Integer::sum);
+      int previous = capturedOccurrences.getOrDefault(key, 0);
+      if (occurrence > previous) {
+        indices.add(index);
+        capturedOccurrences.put(key, occurrence);
+      }
+    }
+    return indices;
+  }
+
+  boolean hasClickControl(HtmlScope document) {
+    HtmlScope control = control(document);
+    return control != null && !control.isDisabledControl();
   }
 
   String nextUrl(HtmlScope document) {
@@ -39,20 +63,8 @@ final class ListNavigation {
   }
 
   private String resolveNextLink(HtmlScope document) {
-    final List<HtmlScope> matches;
-    try {
-      matches = document.select(rule.selector());
-    } catch (IllegalArgumentException | IllegalStateException invalidSelector) {
-      throw failure("The next-link selector is invalid");
-    }
-    if (matches.isEmpty()) {
-      return null;
-    }
-    if (matches.size() != 1) {
-      throw failure("The next-link selector did not identify a single control");
-    }
-    HtmlScope control = matches.getFirst();
-    if (control.isDisabledControl()) {
+    HtmlScope control = control(document);
+    if (control == null || control.isDisabledControl()) {
       return null;
     }
     String url = control.absoluteUrl(rule.urlAttribute());
@@ -60,6 +72,19 @@ final class ListNavigation {
       throw failure("The next control did not provide a URL");
     }
     return url;
+  }
+
+  private HtmlScope control(HtmlScope document) {
+    final List<HtmlScope> matches;
+    try {
+      matches = document.select(rule.selector());
+    } catch (IllegalArgumentException | IllegalStateException invalidSelector) {
+      throw failure("The list control selector is invalid");
+    }
+    if (matches.size() > 1) {
+      throw failure("The list control selector did not identify a single control");
+    }
+    return matches.isEmpty() ? null : matches.getFirst();
   }
 
   private static SiteAccessException failure(String message) {
