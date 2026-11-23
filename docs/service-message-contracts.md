@@ -50,7 +50,7 @@
 | 선택 필드 | 공통 스키마에서 nullable로 명시한 것은 null을 사용한다. purpose·mode별 선택 항목은 아래 조건표를 따른다. |
 | enum | 대문자 영문 문자열. 메시지 종류 이름은 소문자 점 구분 표기를 사용한다. |
 
-latest_records는 저장 순서상 최신 최대 3개이며, 각 항목에는 사용자 필드값 전체가 들어간다. record_id·수집 시각·외부 게시물 ID는 내용 동일성 비교에서 제외한다. 1~2개면 전부, 0개면 FULL 수집이다. 비교 오류를 실제 null 또는 일치로 처리하지 않는다. 같은 값이 반복될 때 개별 기준 항목의 충족을 어떻게 셀지는 비교 모듈의 세부 계약으로 남긴다.
+latest_records는 저장 순서상 최신 최대 3개이며 각 항목에는 사용자 필드값 전체가 들어간다. record_id·수집 시각·외부 게시물 ID는 내용 동일성 비교에서 제외한다. 새로 관측한 정상 항목 하나는 전체 사용자 필드값이 같은 미충족 기준 하나만 채운다. 같은 값의 기준이 여러 건이면 각각 별도의 관측이 필요하며, 누적 DOM에 남은 이미 처리한 항목은 다시 세지 않는다. 실제 null과 비교 오류를 구분한다. 프로젝트별 종료 조건은 7.2를 따른다.
 
 ### 1.3 S3 참조
 
@@ -369,7 +369,7 @@ DETAIL은 항상 BROWSER다. `open`은 LINK `{ "type":"LINK", "selector":"a.titl
 }
 ```
 
-`items[].source_urls`의 project_source_id 존재 자체가 그 항목에 대한 해당 프로젝트의 처리 참여 표시다. 참여했지만 직접 URL이 없으면 source_url=null로 기록한다. 표시가 없는 프로젝트는 그 항목을 의도적으로 처리하지 않은 것이며 Ingestion은 추출·오류 판정을 하지 않는다. 대상 참여 표시는 컬렉션 메시지의 project_source_id와 일치해야 하며 중복 ID는 잘못된 manifest다. 참여 표시가 있는 항목의 상세 수집 실패는 프로젝트 결과 오류로 기록하고 범위 밖으로 바꾸지 않는다. 각 프로젝트의 종료는 페이지 또는 스크롤 5개 묶음을 완전히 처리한 뒤 적용하며 해당 구간까지 표시한다. FULL 대상은 종료 조건 또는 시간 제한까지 표시한다.
+`items[].source_urls`의 project_source_id 존재 자체가 그 항목에 대한 해당 프로젝트의 처리 참여 표시다. 참여했지만 직접 URL이 없으면 source_url=null로 기록한다. 표시가 없는 프로젝트는 그 항목을 의도적으로 처리하지 않은 것이며 Ingestion은 추출·오류 판정을 하지 않는다. 대상 참여 표시는 컬렉션 메시지의 project_source_id와 일치해야 하며 중복 ID는 잘못된 manifest다. 참여 표시가 있는 항목의 상세 수집 실패는 프로젝트 결과 오류로 기록하고 범위 밖으로 바꾸지 않는다. 각 프로젝트의 종료는 7.2에 따라 현재 또는 추가 구간을 완전히 처리한 뒤 적용하며 마지막 참여 구간까지 표시한다. FULL 대상은 종료 조건 또는 시간 제한까지 표시한다.
 
 각 `items[].source_urls`는 프로젝트 출처별 항목 직접 접근 URL을 전달한다. Crawler는 해당 항목을 수집한 각 프로젝트 출처별로 확인한 URL 또는 null을 기록하고 Ingestion은 일치하는 project_source_id의 값을 RECORD.source_url에 사용한다. 항목에 명확한 직접 URL을 확인할 수 없다면 null이다. 이 값은 목록·상세 스냅샷의 관찰 `url`과 다르다.
 
@@ -822,9 +822,9 @@ Control은 일정 이름·원하는 실행 슬롯·등록 상태·최근 오류�
 }
 ```
 
-execution_reason은 INITIAL, SCHEDULED, MANUAL, REVISION, RECOVERY다. collection_mode는 INCREMENTAL 또는 FULL이다. FULL에서는 latest_records=[]이고 일치 조기 종료를 적용하지 않는다. 프로젝트별 선택은 수집 계기와 구분한다. FULL 대상이 하나라도 있으면 출처 실행 예산은 최초·리비전 기준 최대 300초, 순수 반복 대상만 있으면 최대 60초다. 예산은 사이트 접근·대기·재시도·임시 파싱 시간을 포함한다. S3 업로드·결과 발행에 필요한 완료 처리는 별도 작업 종료 기한 안에서 수행한다.
+execution_reason은 INITIAL, SCHEDULED, MANUAL, REVISION, RECOVERY다. collection_mode는 INCREMENTAL 또는 FULL이다. FULL에서는 latest_records=[]이고 일치 조기 종료를 적용하지 않는다. 프로젝트별 모드는 수집 계기와 구분한다. FULL 대상이 하나라도 있으면 출처별 최대 300초, 순수 반복은 최대 60초다. 예산은 사이트 접근·대기·재시도·임시 파싱 및 파서 실행기 호출을 포함한다. S3 업로드·결과 발행은 별도 작업 종료 기한을 따른다.
 
-프로젝트별 비교 기준은 작업 발행 시점 값이다. Control은 관련 적재가 종료될 때까지 같은 출처의 다음 논리 작업을 기다리게 하여 오래된 기준의 중첩을 줄인다. 여러 프로젝트가 요구하는 상세를 한 번 확보하며 완료된 프로젝트는 추가 비교를 중단한다. 스크롤 묶음 크기는 5개, 기준 확인 건수는 min(3, 저장 건수)다.
+프로젝트별 비교 기준은 작업 발행 시점 값이다. Control은 관련 적재 종료까지 동일 출처의 다음 논리 작업을 대기시킨다. 기준 조회 건수는 min(3, 저장 건수)다. 기준 3건이 모두 일치하면 현재 구간을 끝내고 해당 프로젝트의 비교를 마친다. 현재 구간을 끝냈을 때 기준 3건 중 2건만 일치하면 다음 구간 하나를 끝까지 처리하고 종료한다. 기준이 1~2건이면 실제 기준을 전부 확인한 현재 구간에서 종료한다. 기준이 0건이면 FULL 수집한다. 구간은 목록 한 페이지 또는 무한 스크롤·누적 목록의 새 추출 항목 5개 묶음이다. 일치 상태는 구간을 넘어 유지한다. 정상 탐색 종료 시 마지막 누적 묶음에 1~4건이 남아 있으면 그 항목을 하나의 마지막 구간으로 처리한다. 정상 탐색 종료로 다음 구간을 만들 수 없으면 END_OF_LIST, 기한이 먼저 오면 TIME_LIMIT을 적용한다. 이동·추출·비교 실패는 기존 실패 처리로 구분한다. 공유 출처는 모든 정상 대상의 수집 범위가 끝났을 때 조기 종료한다. FULL 대상이 함께 있으면 그 대상은 목록이나 작업 기한까지 계속 처리한다. 다음 구간에서 정상 추출한 항목과 필요한 상세 방문을 해당 프로젝트의 최종 참여 범위에 포함한다.
 
 ### 7.3 collection.completed payload
 
@@ -858,7 +858,7 @@ execution_reason은 INITIAL, SCHEDULED, MANUAL, REVISION, RECOVERY다. collectio
 }
 ```
 
-stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLOCKED, TECHNICAL_FAILURE, EMPTY_LIST, CANCELLED다. latest_data_confirmed 같은 새 결과 코드는 도입하지 않는다. TIME_LIMIT과 정상 END_OF_LIST는 성공 종료가 가능하다. NO_CHANGE라도 앞에서 신규 데이터를 확보했다면 스냅샷과 적재 대상이 있을 수 있다. 전혀 변경이 없으면 snapshot_ref=null, can_ingest=false이며 기존 정상 스냅샷을 유지한다. PARTIAL이면 실패 프로젝트와 적재 가능한 프로젝트를 구분한다. 일반 수집의 정상적으로 확보·검증된 레코드는 적용 가능하나 오류로 완료하지 못한 프로젝트 출처는 복구 대상으로 표시한다. completed는 먼저 전달한 issue와 같은 오류·0건 범위를 포함해 전달 순서가 뒤집혀도 문제 표시를 놓치지 않는다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패는 전체 전환 보류다. can_ingest는 유효 스냅샷·대상별 적용 조건을 확인해 설정한다.
+stop_reason은 TIME_LIMIT, END_OF_LIST, NO_CHANGE, NAVIGATION_FAILED, ACCESS_BLOCKED, TECHNICAL_FAILURE, EMPTY_LIST, CANCELLED다. latest_data_confirmed 같은 새 결과 코드는 도입하지 않는다. TIME_LIMIT과 정상 END_OF_LIST는 성공 종료가 가능하다. NO_CHANGE는 최신값 종료 조건이 충족된 출처의 조기 종료 사유다. 추가 구간까지 신규 적재 후보가 확보되었다면 스냅샷과 적재 대상을 남긴다. 프로젝트 일부만 조기 종료한 경우 전체 출처의 종료 사유는 실제 실행 종료에 맞춘다. 증분 수집에서 정상 추출값이 전달받은 최신 기준 중 어느 것과도 같지 않으면 적재 후보로 남긴다. Ingestion이 전체 저장값과 대조해 신규 여부를 결정한다. 이미 일치 집계에 사용한 기준과 값이 같은 항목은 미충족 기준이 없더라도 그 이유만으로 적재 후보가 되지 않는다. 최신값 조기 종료 때 프로젝트별로 적재 후보가 있고 유효한 스냅샷·기존 적용 조건을 충족하면 can_ingest=true로 표시한다. 최신값 조기 종료에서 적재할 대상이 하나도 없으면 snapshot_ref=null로 기존 정상 세트를 유지한다. 다른 대상이 적재 가능하면 해당 대상이 사용할 최종 스냅샷을 남긴다. PARTIAL이면 실패 프로젝트와 적재 가능한 프로젝트를 구분한다. 일반 수집의 정상적으로 확보·검증된 레코드는 적용할 수 있다. 커넥터 또는 이동 규칙 관련 실패로 완료하지 못한 대상은 복구 대상으로 표시하고, 실행기 장애는 15.7의 기술 재처리 대상으로 표시한다. completed는 먼저 전달한 issue와 같은 오류·0건 범위를 포함해 전달 순서가 뒤집혀도 문제 표시를 놓치지 않는다. 승인 출처 추가 실패는 부분 쓰기 미공개, 리비전 일부 실패는 전체 전환 보류다. can_ingest는 유효 스냅샷·대상별 적용 조건을 확인해 설정한다.
 
 ## 8 적재·준비 요청과 결과
 
@@ -1516,11 +1516,11 @@ Analysis·Crawler·Ingestion은 `POST /internal/v1/parser:execute`로 격리 파
 | 3a | Ingestion → Control | HTTP 200 | projects[].latest_records, project_source_id, schema_version | 0건은 정상 응답이며 해당 대상 FULL 수집 |
 | 3b | Ingestion → Control | HTTP 오류 응답 | error.code, message, details | 빈 목록으로 바꾸지 않음. 비교 기준 없이 임의 수집하지 않고 기술 오류 재처리 |
 | 4 | Control → Crawler | SQS collection.execute | execution_reason=SCHEDULED, projects[].규칙·최신값 | 대상별 INCREMENTAL/FULL 기준으로 비교 |
-| 5 | Crawler ↔ 사이트 | 목록·상세·스크롤 | 추출 순서 5개 묶음 또는 페이지 단위 | 프로젝트별 기준 충족 상태 유지. 모두 충족 또는 끝·시간 제한 종료 |
+| 5 | Crawler ↔ 사이트 | 목록·상세·스크롤 | 추출 순서 5개 묶음 또는 페이지 단위 | 7.2의 3건 일치 또는 2건 일치 후 한 구간 추가를 프로젝트별로 적용. 남은 FULL·증분 대상은 계속 수집 |
 | 6a | Crawler → S3 | 객체 저장 | 최종 스냅샷과 manifest | 정상 확정된 참조 확보. 전혀 변경이 없으면 새 정상 세트로 교체하지 않음 |
 | 6b | Crawler → Control | SQS collection.completed | 종료 사유, snapshot_ref, project_results | 적재 가능 대상만 다음 작업 생성 |
 | 7 | Control → Ingestion | SQS ingestion.execute | mode=APPEND, 적재 가능한 프로젝트별 요청 | 한 공유 스냅샷에 프로젝트별 커넥터 적용 |
-| 8 | Ingestion → Control | SQS ingestion.completed | 프로젝트별 결과, 정상 추출 건수, 데이터 revision | 자식 작업 집합을 기준으로 종료 집계. 부분 실패는 해당 대상만 복구 |
+| 8 | Ingestion → Control | SQS ingestion.completed | 프로젝트별 결과, 정상 추출 건수, 데이터 revision | 자식 작업 집합을 기준으로 종료 집계. 부분 실패는 영향 범위에 따라 규칙 복구 또는 기술 재처리 |
 
 ### 15.6 프로젝트와 출처의 수동 수집
 
